@@ -5,6 +5,7 @@ import { useState, useEffect } from 'react';
 export default function Dashboard() {
   const [state, setState] = useState({ activeSlot: 0, data: [] as any[] });
   const [loading, setLoading] = useState(true);
+  const [isUploading, setIsUploading] = useState(false); // เพิ่ม State สำหรับจัดการ UI ตอนอัปโหลด
 
   useEffect(() => {
     fetch('/api/settings').then(res => res.json()).then(d => {
@@ -18,19 +19,40 @@ export default function Dashboard() {
     await fetch('/api/settings', { method: 'POST', body: JSON.stringify(newData) });
   };
 
-  const handleFileUpload = (index: number, e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  // ฟังก์ชันอัปโหลดแบบใหม่ ยิงไปหา API ให้ช่วยแกะ PDF
+  const handleFileUpload = async (index: number, e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
 
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const text = event.target?.result as string;
-      const d = [...state.data];
-      d[index].context = text; // เอาข้อความจากไฟล์ยัดใส่คลังความรู้
-      save({ ...state, data: d });
-      alert(`[Slot ${index + 1}] อัปโหลดคลังความรู้สำเร็จ! (${text.length} ตัวอักษร)`);
-    };
-    reader.readAsText(file); // ตอนนี้รองรับไฟล์ .txt ก่อน
+    setIsUploading(true);
+    const formData = new FormData();
+
+    // ยัดทุกไฟล์ที่เลือกใส่ FormData
+    for (let i = 0; i < files.length; i++) {
+      formData.append('files', files[i]);
+    }
+
+    try {
+      const res = await fetch('/api/parse', {
+        method: 'POST',
+        body: formData
+      });
+      const data = await res.json();
+
+      if (data.text) {
+        const d = [...state.data];
+        d[index].context = data.text; // แทนที่ความรู้เดิมด้วยไฟล์ที่อัปโหลดใหม่
+        await save({ ...state, data: d });
+        alert(`[Slot ${index + 1}] สกัดความรู้สำเร็จ!\nอ่านไฟล์ได้ทั้งหมด: ${data.text.length} ตัวอักษร`);
+      } else {
+        alert("เกิดข้อผิดพลาดในการอ่านไฟล์: " + (data.error || "Unknown error"));
+      }
+    } catch (err) {
+      alert("อัปโหลดไม่สำเร็จ ลองใหม่อีกครั้งครับ");
+    } finally {
+      setIsUploading(false);
+      e.target.value = ''; // เคลียร์ช่อง input ให้เลือกไฟล์เดิมซ้ำได้
+    }
   };
 
   if (loading) return <div className="p-10 text-center font-mono text-[#0D6EFD]">INITIALIZING HQ...</div>;
@@ -78,23 +100,31 @@ export default function Dashboard() {
                   />
                 </div>
 
-                {/* 2. พระเอกของเรา: ปุ่มอัปโหลดไฟล์ (ที่นายหาไม่เจอ ผมจับยัดมาให้ตรงนี้แล้ว!) */}
+                {/* 2. พระเอกของเรา: ปุ่มอัปโหลดไฟล์ (อัปเกรดให้รับ PDF และหลายไฟล์ได้) */}
                 <div className="bg-slate-50 p-3 border border-blue-50 rounded-xl">
                   <label className="text-[10px] font-bold text-slate-500 uppercase block mb-2">
-                    Knowledge Base (แนบไฟล์ .txt)
+                    Knowledge Base (แนบไฟล์ .txt, .pdf ได้หลายไฟล์)
                   </label>
                   <div className="flex flex-col sm:flex-row sm:items-center gap-3">
                     <input
                       type="file"
-                      accept=".txt"
+                      accept=".txt,.pdf"
+                      multiple // เปิดโหมดให้เลือกหลายไฟล์พร้อมกัน
+                      disabled={isUploading}
                       onChange={(e) => handleFileUpload(idx, e)}
-                      className="text-xs text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-bold file:bg-[#0D6EFD] file:text-white hover:file:bg-blue-600 cursor-pointer w-full sm:w-auto"
+                      className="text-xs text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-bold file:bg-[#0D6EFD] file:text-white hover:file:bg-blue-600 cursor-pointer w-full sm:w-auto disabled:opacity-50"
                     />
-                    <span className="text-[10px] font-bold">
-                      {slot.context && slot.context.length > 0
-                        ? <span className="text-green-500">✅ มีข้อมูลในสมองแล้ว ({slot.context.length} chars)</span>
-                        : <span className="text-red-400">❌ ยังไม่มีข้อมูล</span>}
-                    </span>
+
+                    {/* UI โชว์สถานะอัปโหลด */}
+                    {isUploading ? (
+                      <span className="text-[10px] font-bold text-blue-500 animate-pulse">กำลังสกัดความรู้...</span>
+                    ) : (
+                      <span className="text-[10px] font-bold">
+                        {slot.context && slot.context.length > 0
+                          ? <span className="text-green-500">✅ มีข้อมูลในสมองแล้ว ({slot.context.length} chars)</span>
+                          : <span className="text-red-400">❌ ยังไม่มีข้อมูล</span>}
+                      </span>
+                    )}
                   </div>
                 </div>
 
@@ -120,7 +150,7 @@ export default function Dashboard() {
           ))}
         </div>
       </div>
-      <p className="text-center mt-10 text-[10px] text-slate-300">DASHBOARD V2.0 // KNOWLEDGE BASE READY</p>
+      <p className="text-center mt-10 text-[10px] text-slate-300">DASHBOARD V2.0 // PDF PARSER ENABLED</p>
     </div>
   );
 }
