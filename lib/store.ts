@@ -16,9 +16,9 @@ export const presetsStore = {
     context: "",
     models: {
       // --- แก้ชื่อโมเดลตรงนี้ให้เป็นรุ่นฟรีถาวร ---
-      gemini: "google/gemini-2.0-flash:free",
-      gpt: "meta-llama/llama-3.2-3b-instruct:free",
-      claude: "mistralai/mistral-7b-instruct:free",
+      gemini: "openrouter/free",
+      gpt: "openrouter/free",
+      claude: "openrouter/free",
     }
   })) as Preset[]
 };
