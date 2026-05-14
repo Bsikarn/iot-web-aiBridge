@@ -1,65 +1,86 @@
-import Image from "next/image";
+// app/page.tsx
+"use client";
+import { useState, useEffect } from 'react';
 
-export default function Home() {
+export default function Dashboard() {
+  const [state, setState] = useState({ activeSlot: 0, data: [] as any[] });
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetch('/api/settings').then(res => res.json()).then(d => {
+      setState(d);
+      setLoading(false);
+    });
+  }, []);
+
+  const save = async (newData: any) => {
+    setState(newData);
+    await fetch('/api/settings', { method: 'POST', body: JSON.stringify(newData) });
+  };
+
+  if (loading) return <div className="p-10 text-center font-mono text-[#0D6EFD]">INITIALIZING HQ...</div>;
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
+    <div className="min-h-screen bg-[#F0F7FF] p-6 font-sans text-slate-800">
+      <div className="max-w-3xl mx-auto space-y-6">
+
+        <header className="flex justify-between items-end border-b-2 border-[#A3D8F4] pb-4">
+          <h1 className="text-3xl font-black text-[#0D6EFD]">STEALTH <span className="font-light">HQ</span></h1>
+          <span className="text-xs font-bold text-blue-400">OPENROUTER BRIDGE ACTIVE</span>
+        </header>
+
+        <div className="grid gap-4">
+          {state.data.map((slot, idx) => (
+            <div key={slot.id} className={`p-5 rounded-2xl border-2 transition-all ${state.activeSlot === idx ? 'bg-white border-[#0D6EFD] shadow-lg' : 'bg-white/50 border-transparent opacity-70'}`}>
+              <div className="flex justify-between items-center mb-4">
+                <input
+                  className="font-bold bg-transparent outline-none focus:border-b border-blue-300"
+                  value={slot.name}
+                  onChange={e => {
+                    const d = [...state.data]; d[idx].name = e.target.value;
+                    save({ ...state, data: d });
+                  }}
+                />
+                <button
+                  onClick={() => save({ ...state, activeSlot: idx })}
+                  className={`px-6 py-2 rounded-full text-xs font-black transition-all ${state.activeSlot === idx ? 'bg-[#0D6EFD] text-white' : 'bg-[#A3D8F4] text-[#0D6EFD]'}`}
+                >
+                  {state.activeSlot === idx ? 'ACTIVE' : 'SELECT'}
+                </button>
+              </div>
+
+              <div className="space-y-3">
+                <textarea
+                  className="w-full p-3 bg-slate-50 border border-blue-50 rounded-xl text-sm outline-none focus:ring-2 ring-blue-100"
+                  placeholder="System Prompt..."
+                  value={slot.prompt}
+                  onChange={e => {
+                    const d = [...state.data]; d[idx].prompt = e.target.value;
+                    save({ ...state, data: d });
+                  }}
+                />
+
+                <div className="grid grid-cols-3 gap-2">
+                  {Object.keys(slot.models).map(provider => (
+                    <div key={provider} className="flex flex-col">
+                      <label className="text-[10px] font-bold text-slate-400 uppercase ml-1">{provider}</label>
+                      <input
+                        className="p-2 text-[10px] bg-white border border-blue-50 rounded-lg outline-none"
+                        value={slot.models[provider]}
+                        onChange={e => {
+                          const d = [...state.data]; d[idx].models[provider] = e.target.value;
+                          save({ ...state, data: d });
+                        }}
+                      />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          ))}
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
+      </div>
+      <p className="text-center mt-10 text-[10px] text-slate-300">DASHBOARD V2.0 // KISS REFACTORED</p>
     </div>
   );
 }
