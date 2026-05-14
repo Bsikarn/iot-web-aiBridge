@@ -20,14 +20,19 @@ export async function POST(req: Request) {
 
     if (!image) return new NextResponse("No image", { status: 400 });
 
-    // ดึงค่าจาก Slot ที่เลือกอยู่บนเว็บ
+    // ดึงค่าทั้งหมดจาก Slot ที่เลือกไว้หน้าเว็บ
     const config = presetsStore.data[presetsStore.activeSlot];
-    const targetModel = "openrouter/free";
 
-    console.log(`[API] FORCING OpenRouter Model: ${targetModel}`);
+    // ถอนวิชามาร! กลับมาใช้โมเดลของจริงที่ตั้งไว้ในเว็บ
+    const targetModel = config.models[provider];
 
     const imageBuffer = Buffer.from(await image.arrayBuffer());
     const base64Image = imageBuffer.toString("base64");
+
+    // รวม "บริบทจากไฟล์" เข้ากับ "คำสั่งหลัก"
+    const systemPrompt = `[KNOWLEDGE BASE]:\n${config.context}\n\n[INSTRUCTION]:\n${config.prompt}`;
+
+    console.log(`[API] AI: ${provider} | Model: ${targetModel} | Context Length: ${config.context.length}`);
 
     const response = await openrouter.chat.completions.create({
       model: targetModel,
@@ -35,7 +40,7 @@ export async function POST(req: Request) {
         {
           role: "user",
           content: [
-            { type: "text", text: `${config.context}\n\n${config.prompt}` },
+            { type: "text", text: systemPrompt },
             { type: "image_url", image_url: { url: `data:${image.type};base64,${base64Image}` } }
           ],
         },
