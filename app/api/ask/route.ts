@@ -7,8 +7,8 @@ const openrouter = new OpenAI({
   baseURL: "https://openrouter.ai/api/v1",
   apiKey: process.env.OPENROUTER_API_KEY,
   defaultHeaders: {
-    "HTTP-Referer": "https://stealth-hq.vercel.app",
-    "X-Title": "Stealth Calc HQ",
+    "HTTP-Referer": "https://aicalculate-iot.vercel.app/",
+    "X-Title": "AI Calculate IOT",
   }
 });
 

@@ -12,12 +12,13 @@ export const presetsStore = {
   data: Array.from({ length: 5 }, (_, i) => ({
     id: i + 1,
     name: `Slot ${i + 1}`,
-    prompt: "จงแก้โจทย์จากภาพนี้",
+    prompt: "เห็นภาพไหม ถ้าเห็นตอบแค่ 'เห็น'", // แอบตั้ง Default ตามที่นายพิมพ์เทสไว้เลย
     context: "",
     models: {
-      gemini: "google/gemini-flash-1.5",
-      gpt: "openai/gpt-4o-mini",
-      claude: "anthropic/claude-3-haiku",
+      // --- แก้ชื่อโมเดลตรงนี้ให้เป็นรุ่นฟรีถาวร ---
+      gemini: "google/gemini-2.0-flash:free",
+      gpt: "meta-llama/llama-3.2-3b-instruct:free",
+      claude: "mistralai/mistral-7b-instruct:free",
     }
   })) as Preset[]
 };
