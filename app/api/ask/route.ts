@@ -22,7 +22,9 @@ export async function POST(req: Request) {
 
     // ดึงค่าจาก Slot ที่เลือกอยู่บนเว็บ
     const config = presetsStore.data[presetsStore.activeSlot];
-    const targetModel = config.models[provider];
+    const targetModel = "openrouter/free";
+
+    console.log(`[API] FORCING OpenRouter Model: ${targetModel}`);
 
     const imageBuffer = Buffer.from(await image.arrayBuffer());
     const base64Image = imageBuffer.toString("base64");
