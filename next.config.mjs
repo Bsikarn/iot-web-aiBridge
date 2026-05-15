@@ -4,10 +4,6 @@ const nextConfig = {
     typescript: {
         ignoreBuildErrors: true,
     },
-    // สั่งให้ Vercel ข้ามการเช็ค ESLint
-    eslint: {
-        ignoreDuringBuilds: true,
-    },
 };
 
 export default nextConfig;
