@@ -4,7 +4,6 @@ import OpenAI from "openai";
 import { prisma } from '@/lib/prisma';
 import { createClient } from '@supabase/supabase-js';
 
-// ตั้งค่า OpenRouter ให้พร้อมรบ
 const openrouter = new OpenAI({
   baseURL: "https://openrouter.ai/api/v1",
   apiKey: process.env.OPENROUTER_API_KEY || "",
@@ -41,45 +40,44 @@ export async function POST(req: Request) {
       return new NextResponse("Error: Slot configuration not found", { status: 500 });
     }
 
+    // 💡 แก้ไขจุดที่ 1: ตรวจสอบโมเดล ถ้าเป็นตัวฟรีที่ไม่มี Vision ให้ใช้ Gemini Flash เป็นตัวหลักแทน
     const models = config.models as Record<string, string>;
-    const targetModel = models[provider] || "openrouter/free";
+    let targetModel = models[provider];
 
-    // 💡 สร้าง Buffer ตรงนี้เลย จะได้ใช้ทั้งส่งให้ AI และส่งเข้า Supabase
+    if (!targetModel || targetModel === "openrouter/free") {
+      targetModel = "google/gemini-2.0-flash-001"; // ตัวนี้ฉลาดและรองรับภาพ 100%
+    }
+
     const arrayBuffer = await image.arrayBuffer();
-    const fileBuffer = Buffer.from(arrayBuffer);
-    const base64Image = fileBuffer.toString("base64");
+    const base64Image = Buffer.from(arrayBuffer).toString("base64");
     const mimeType = image.type || "image/jpeg";
 
     // --- อัปโหลดรูปขึ้น Supabase Storage ---
     const filename = `${Date.now()}-${Math.random().toString(36).substring(7)}.jpg`;
 
-    // 💡 แก้ไขแล้ว: โยน 'fileBuffer' เข้าไปแทน 'image' เพื่อแก้ปัญหา fetch failed บน Node.js
+    // 💡 แก้ไขจุดที่ 2: ใช้ arrayBuffer เพื่อแก้ fetch failed บน Vercel
     const { error: uploadError } = await supabase.storage
       .from('stealth-snaps')
-      .upload(filename, fileBuffer, {
+      .upload(filename, arrayBuffer, {
         contentType: mimeType,
         upsert: false
       });
 
-    // 🚨 เปิดการแจ้งเตือน Error! ถ้าอัปโหลดพัง ต้องเด้งบอก ESP32 ทันที จะได้แก้ถูกจุด
     if (uploadError) {
       console.error("Supabase Upload Error:", uploadError.message);
       return new NextResponse(`Storage Error: ${uploadError.message}`, { status: 500 });
     }
 
-    // ดึง Public URL ของภาพ
     const { data: publicUrlData } = supabase.storage
       .from('stealth-snaps')
       .getPublicUrl(filename);
 
     const publicUrl = publicUrlData.publicUrl;
-    // ------------------------------------------
 
+    // --- ส่งให้ AI ---
     const knowledgeBase = config.context ? `[KNOWLEDGE BASE]:\n${config.context}\n\n` : "";
     const instruction = `[USER INSTRUCTION]:\n${config.prompt}`;
     const fullPrompt = `${knowledgeBase}${instruction}`;
-
-    console.log(`[COMMAND] Slot: ${config.slotIndex + 1} | AI: ${provider} | Model: ${targetModel}`);
 
     const response = await openrouter.chat.completions.create({
       model: targetModel,
@@ -90,9 +88,7 @@ export async function POST(req: Request) {
             { type: "text", text: fullPrompt },
             {
               type: "image_url",
-              image_url: {
-                url: `data:${mimeType};base64,${base64Image}`
-              }
+              image_url: { url: `data:${mimeType};base64,${base64Image}` }
             }
           ],
         },
@@ -102,7 +98,7 @@ export async function POST(req: Request) {
 
     const aiResult = response.choices[0]?.message?.content || "AI did not return a response.";
 
-    // --- บันทึก History ลงฐานข้อมูลผ่าน Prisma ---
+    // บันทึกประวัติ
     const currentHistory = config.history ? JSON.parse(config.history) : [];
     currentHistory.push({
       timestamp: new Date().toISOString(),
