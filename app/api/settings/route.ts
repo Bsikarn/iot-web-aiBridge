@@ -34,9 +34,9 @@ export async function GET() {
     const activeSlot = activeSlotItem ? activeSlotItem.slotIndex : 0;
 
     return NextResponse.json({ activeSlot, data: slots });
-  } catch (error) {
+  } catch (error: any) {
     console.error("GET /api/settings error:", error);
-    return NextResponse.json({ error: "Failed to fetch settings" }, { status: 500 });
+    return NextResponse.json({ error: error.message || "Failed to fetch settings" }, { status: 500 });
   }
 }
 

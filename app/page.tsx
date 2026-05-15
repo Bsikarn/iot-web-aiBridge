@@ -14,7 +14,18 @@ export default function Dashboard() {
     fetch('/api/settings')
       .then(res => res.json())
       .then(d => {
-        setState(d);
+        if (d.error) {
+          alert("Server Error: " + d.error);
+        }
+        setState({
+          activeSlot: d.activeSlot || 0,
+          data: Array.isArray(d.data) ? d.data : []
+        });
+        setLoading(false);
+      })
+      .catch(e => {
+        console.error(e);
+        setState(s => ({ ...s, data: [] }));
         setLoading(false);
       });
   }, []);
