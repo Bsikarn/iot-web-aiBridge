@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import OpenAI from "openai";
-import { presetsStore } from '@/lib/store';
+import { prisma } from '@/lib/prisma';
+import { createClient } from '@supabase/supabase-js';
 
 // ตั้งค่า OpenRouter ให้พร้อมรบ
 const openrouter = new OpenAI({
@@ -11,6 +12,12 @@ const openrouter = new OpenAI({
     "X-Title": "AI Calculate IOT HQ",
   }
 });
+
+// ตั้งค่า Supabase Client (ใช้ Service Role Key เพื่อสิทธิ์ในการอัปโหลดโดยไม่ต้อง Login)
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL || "",
+  process.env.SUPABASE_SERVICE_ROLE_KEY || ""
+);
 
 export async function POST(req: Request) {
   try {
@@ -23,31 +30,53 @@ export async function POST(req: Request) {
       return new NextResponse("Error: No image received", { status: 400 });
     }
 
-    // 2. ดึงค่า Config (ระวังเรื่อง Serverless Memory)
-    // หมายเหตุ: บน Vercel ค่า activeSlot จะกลับเป็น 0 เสมอถ้าไม่มี Database 
-    // แนะนำให้นายไปแก้ค่า Default ใน lib/store.ts ให้เป็นตัวที่อยากใช้จริงๆ ด้วย
-    const slotIdx = presetsStore.activeSlot ?? 0;
-    const config = presetsStore.data[slotIdx];
+    // 2. ดึงค่า Config จากฐานข้อมูล (Prisma)
+    const config = await prisma.slot.findFirst({
+      where: { isActive: true }
+    });
 
     if (!config) {
       return new NextResponse("Error: Slot configuration not found", { status: 500 });
     }
 
     // 3. เลือกโมเดล
-    const targetModel = config.models[provider];
+    const models = config.models as Record<string, string>;
+    const targetModel = models[provider] || "openrouter/free";
 
     // 4. จัดการรูปภาพ
     const buffer = Buffer.from(await image.arrayBuffer());
     const base64Image = buffer.toString("base64");
     const mimeType = image.type || "image/jpeg";
 
+    // --- NEW: อัปโหลดรูปขึ้น Supabase Storage ---
+    const filename = `${Date.now()}-${Math.random().toString(36).substring(7)}.jpg`;
+    
+    const { error: uploadError } = await supabase.storage
+      .from('stealth-snaps')
+      .upload(filename, buffer, {
+        contentType: mimeType,
+        upsert: false
+      });
+
+    if (uploadError) {
+      console.error("Supabase Upload Error:", uploadError.message);
+      // ไม่ Return Error ทันที เผื่ออยากให้ AI ยังตอบได้แม้บันทึกภาพไม่สำเร็จ
+    }
+
+    // ดึง Public URL ของภาพ
+    const { data: publicUrlData } = supabase.storage
+      .from('stealth-snaps')
+      .getPublicUrl(filename);
+    
+    const publicUrl = publicUrlData.publicUrl;
+    // ------------------------------------------
+
     // 5. ประกอบคำสั่ง (System Prompt + Knowledge Base)
-    // แยกส่วนเนื้อหาจากไฟล์ และคำสั่งสั่งงานให้ AI เข้าใจง่ายขึ้น
     const knowledgeBase = config.context ? `[KNOWLEDGE BASE]:\n${config.context}\n\n` : "";
     const instruction = `[USER INSTRUCTION]:\n${config.prompt}`;
     const fullPrompt = `${knowledgeBase}${instruction}`;
 
-    console.log(`[COMMAND] Slot: ${slotIdx + 1} | AI: ${provider} | Model: ${targetModel}`);
+    console.log(`[COMMAND] Slot: ${config.slotIndex + 1} | AI: ${provider} | Model: ${targetModel}`);
 
     // 6. ส่งคำสั่งไปที่ OpenRouter
     const response = await openrouter.chat.completions.create({
@@ -66,17 +95,30 @@ export async function POST(req: Request) {
           ],
         },
       ],
-      // ปรับแต่งให้ AI ตอบกระชับ เหมาะกับจอเครื่องคิดเลข
       max_tokens: 500,
     });
 
     const aiResult = response.choices[0]?.message?.content || "AI did not return a response.";
 
+    // --- NEW: บันทึก History ลงฐานข้อมูลผ่าน Prisma ---
+    const currentHistory = config.history ? JSON.parse(config.history) : [];
+    currentHistory.push({
+      timestamp: new Date().toISOString(),
+      imageUrl: publicUrl,
+      aiResponse: aiResult,
+      provider: provider
+    });
+
+    await prisma.slot.update({
+      where: { id: config.id },
+      data: { history: JSON.stringify(currentHistory) }
+    });
+    // ------------------------------------------------
+
     return new NextResponse(aiResult, { status: 200 });
 
   } catch (error: any) {
     console.error("Critical API Error:", error.message);
-    // ส่ง Error กลับไปแบบบรรทัดเดียวเพื่อให้เครื่องคิดเลขแสดงผลได้
     return new NextResponse(`AI Error: ${error.message}`, { status: 500 });
   }
 }
