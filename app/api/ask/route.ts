@@ -40,12 +40,12 @@ export async function POST(req: Request) {
       return new NextResponse("Error: Slot configuration not found", { status: 500 });
     }
 
-    // 💡 แก้ไขจุดที่ 1: ตรวจสอบโมเดล ถ้าเป็นตัวฟรีที่ไม่มี Vision ให้ใช้ Gemini Flash เป็นตัวหลักแทน
+    // 🔓 ปลดล็อคแล้ว: ใช้โมเดลตามที่นายตั้งค่าไว้ในหน้าเว็บเป๊ะๆ
     const models = config.models as Record<string, string>;
-    let targetModel = models[provider];
+    const targetModel = models[provider];
 
-    if (!targetModel || targetModel === "openrouter/free") {
-      targetModel = "google/gemini-2.0-flash-001"; // ตัวนี้ฉลาดและรองรับภาพ 100%
+    if (!targetModel) {
+      return new NextResponse(`Error: No model selected for provider ${provider}`, { status: 400 });
     }
 
     const arrayBuffer = await image.arrayBuffer();
@@ -55,7 +55,6 @@ export async function POST(req: Request) {
     // --- อัปโหลดรูปขึ้น Supabase Storage ---
     const filename = `${Date.now()}-${Math.random().toString(36).substring(7)}.jpg`;
 
-    // 💡 แก้ไขจุดที่ 2: ใช้ arrayBuffer เพื่อแก้ fetch failed บน Vercel
     const { error: uploadError } = await supabase.storage
       .from('stealth-snaps')
       .upload(filename, arrayBuffer, {
