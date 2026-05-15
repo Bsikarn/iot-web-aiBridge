@@ -44,18 +44,19 @@ export async function POST(req: Request) {
     const models = config.models as Record<string, string>;
     const targetModel = models[provider] || "openrouter/free";
 
-    // สำหรับส่งให้ AI ต้องใช้ Base64
+    // 💡 สร้าง Buffer ตรงนี้เลย จะได้ใช้ทั้งส่งให้ AI และส่งเข้า Supabase
     const arrayBuffer = await image.arrayBuffer();
-    const base64Image = Buffer.from(arrayBuffer).toString("base64");
+    const fileBuffer = Buffer.from(arrayBuffer);
+    const base64Image = fileBuffer.toString("base64");
     const mimeType = image.type || "image/jpeg";
 
     // --- อัปโหลดรูปขึ้น Supabase Storage ---
     const filename = `${Date.now()}-${Math.random().toString(36).substring(7)}.jpg`;
 
-    // 💡 ทริค: โยนตัวแปร 'image' (File object) เข้าไปตรงๆ เลยครับ Supabase จะทำงานเสถียรกว่า
+    // 💡 แก้ไขแล้ว: โยน 'fileBuffer' เข้าไปแทน 'image' เพื่อแก้ปัญหา fetch failed บน Node.js
     const { error: uploadError } = await supabase.storage
       .from('stealth-snaps')
-      .upload(filename, image, {
+      .upload(filename, fileBuffer, {
         contentType: mimeType,
         upsert: false
       });
