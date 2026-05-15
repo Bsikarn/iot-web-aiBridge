@@ -13,13 +13,17 @@ const openrouter = new OpenAI({
   }
 });
 
-// ตั้งค่า Supabase Client (ใช้ Service Role Key เพื่อสิทธิ์ในการอัปโหลดโดยไม่ต้อง Login)
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL || "",
-  process.env.SUPABASE_SERVICE_ROLE_KEY || ""
-);
-
 export async function POST(req: Request) {
+  // ตั้งค่า Supabase Client ภายในฟังก์ชันเพื่อป้องกัน Error ตอน Build (Static Analysis)
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  
+  if (!supabaseUrl || !supabaseKey) {
+    return new NextResponse("Error: Supabase credentials are missing", { status: 500 });
+  }
+
+  const supabase = createClient(supabaseUrl, supabaseKey);
+
   try {
     const formData = await req.formData();
     const image = formData.get('image') as File;
