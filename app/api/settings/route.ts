@@ -13,7 +13,11 @@ export async function GET() {
         slotIndex: i,
         isActive: i === 0, // Slot แรกเป็น active by default
         name: `Slot ${i + 1}`,
-        prompt: "เห็นภาพไหม ถ้าเห็นตอบแค่ 'เห็น'",
+        prompt1: "เห็นภาพไหม ถ้าเห็นตอบแค่ 'เห็น'",
+        prompt2: "",
+        prompt3: "",
+        prompt4: "",
+        prompt5: "",
         context: "",
         history: "",
         models: {
@@ -54,7 +58,11 @@ export async function POST(req: Request) {
             data: {
               isActive: slot.slotIndex === activeSlot,
               name: slot.name,
-              prompt: slot.prompt,
+              prompt1: slot.prompt1 || "",
+              prompt2: slot.prompt2 || "",
+              prompt3: slot.prompt3 || "",
+              prompt4: slot.prompt4 || "",
+              prompt5: slot.prompt5 || "",
               context: slot.context,
               models: slot.models,
               history: slot.history || "",

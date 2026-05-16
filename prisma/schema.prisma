@@ -11,7 +11,11 @@ model Slot {
   slotIndex Int      @unique
   isActive  Boolean  @default(false)
   name      String
-  prompt    String
+  prompt1   String   @default("")
+  prompt2   String   @default("")
+  prompt3   String   @default("")
+  prompt4   String   @default("")
+  prompt5   String   @default("")
   context   String
   history   String?
   models    Json

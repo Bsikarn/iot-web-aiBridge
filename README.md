@@ -21,9 +21,11 @@ A "Stealth" hardware-software integration that allows users to capture images fr
 - pdf2json (PDF parsing)
 
 ## Active Features
-- **3-Slot Configuration** — Three independent presets allowing different System Prompts and AI Models.
+- **3-Slot Configuration** — Three independent presets allowing different AI Models and 5 distinct System Prompts each.
 - **Advanced Knowledge Base** — Supports uploading multiple `.txt` and `.pdf` files, automatically parsing and appending text to the AI context.
 - **Vision-Language Integration** — AI models analyze the hardware-sent image in direct context with uploaded documents.
+- **Reuse Last Image Mode** — ESP32 can send a command to reuse the last captured image, saving upload time and bandwidth.
+- **History UI** — Card-based accordion UI showing the last 3 captures per slot.
 - **Persistence** — All slot configurations and active states are stored in PostgreSQL via Prisma.
 
 ## Directory Structure

@@ -25,10 +25,12 @@ export async function POST(req: Request) {
 
   try {
     const formData = await req.formData();
-    const image = formData.get('image') as File;
+    const mode = formData.get('mode') as string;
+    const promptIndex = (formData.get('prompt_index') as string) || "1";
+    const image = formData.get('image') as File | null;
     const provider = (formData.get('ai_provider') as string) || 'gemini';
 
-    if (!image) {
+    if (mode !== 'reuse' && !image) {
       return new NextResponse("Error: No image received", { status: 400 });
     }
 
@@ -48,34 +50,52 @@ export async function POST(req: Request) {
       return new NextResponse(`Error: No model selected for provider ${provider}`, { status: 400 });
     }
 
-    const arrayBuffer = await image.arrayBuffer();
-    const base64Image = Buffer.from(arrayBuffer).toString("base64");
-    const mimeType = image.type || "image/jpeg";
+    let publicUrl = "";
+    let base64Image = "";
+    let mimeType = "image/jpeg";
+    let imageUrlPayload: any = {};
 
-    // --- อัปโหลดรูปขึ้น Supabase Storage ---
-    const filename = `${Date.now()}-${Math.random().toString(36).substring(7)}.jpg`;
+    if (mode === 'reuse') {
+      const currentHistory = config.history ? JSON.parse(config.history) : [];
+      if (currentHistory.length === 0) {
+        return new NextResponse("Error: No history available to reuse", { status: 400 });
+      }
+      publicUrl = currentHistory[currentHistory.length - 1].imageUrl;
+      imageUrlPayload = { url: publicUrl };
+    } else {
+      const arrayBuffer = await image!.arrayBuffer();
+      base64Image = Buffer.from(arrayBuffer).toString("base64");
+      mimeType = image!.type || "image/jpeg";
 
-    const { error: uploadError } = await supabase.storage
-      .from('stealth-snaps')
-      .upload(filename, arrayBuffer, {
-        contentType: mimeType,
-        upsert: false
-      });
+      // --- อัปโหลดรูปขึ้น Supabase Storage ---
+      const filename = `${Date.now()}-${Math.random().toString(36).substring(7)}.jpg`;
 
-    if (uploadError) {
-      console.error("Supabase Upload Error:", uploadError.message);
-      return new NextResponse(`Storage Error: ${uploadError.message}`, { status: 500 });
+      const { error: uploadError } = await supabase.storage
+        .from('stealth-snaps')
+        .upload(filename, arrayBuffer, {
+          contentType: mimeType,
+          upsert: false
+        });
+
+      if (uploadError) {
+        console.error("Supabase Upload Error:", uploadError.message);
+        return new NextResponse(`Storage Error: ${uploadError.message}`, { status: 500 });
+      }
+
+      const { data: publicUrlData } = supabase.storage
+        .from('stealth-snaps')
+        .getPublicUrl(filename);
+
+      publicUrl = publicUrlData.publicUrl;
+      imageUrlPayload = { url: `data:${mimeType};base64,${base64Image}` };
     }
 
-    const { data: publicUrlData } = supabase.storage
-      .from('stealth-snaps')
-      .getPublicUrl(filename);
-
-    const publicUrl = publicUrlData.publicUrl;
-
     // --- ส่งให้ AI ---
+    const promptKey = `prompt${promptIndex}` as keyof typeof config;
+    const selectedPrompt = config[promptKey] as string || "";
+
     const knowledgeBase = config.context ? `[KNOWLEDGE BASE]:\n${config.context}\n\n` : "";
-    const instruction = `[USER INSTRUCTION]:\n${config.prompt}`;
+    const instruction = `[USER INSTRUCTION]:\n${selectedPrompt}`;
     const fullPrompt = `${knowledgeBase}${instruction}`;
 
     const response = await openrouter.chat.completions.create({
@@ -87,7 +107,7 @@ export async function POST(req: Request) {
             { type: "text", text: fullPrompt },
             {
               type: "image_url",
-              image_url: { url: `data:${mimeType};base64,${base64Image}` }
+              image_url: imageUrlPayload
             }
           ],
         },

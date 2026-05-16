@@ -9,6 +9,9 @@ export default function Dashboard() {
   const [state, setState] = useState({ activeSlot: 0, data: [] as any[] });
   const [loading, setLoading] = useState(true);
   const [isUploading, setIsUploading] = useState<{ [key: number]: boolean }>({});
+  const [expandedHistory, setExpandedHistory] = useState<{ [key: string]: boolean }>({});
+
+  const toggleHistory = (id: string) => setExpandedHistory(prev => ({ ...prev, [id]: !prev[id] }));
 
   useEffect(() => {
     fetch('/api/settings')
@@ -128,20 +131,25 @@ export default function Dashboard() {
               </div>
 
               <div className="space-y-5">
-                {/* 1. Prompt */}
-                <div>
+                {/* 1. Prompts */}
+                <div className="space-y-3">
                   <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block mb-2 ml-1">
-                    System Prompt
+                    System Prompts (1-5)
                   </label>
-                  <textarea
-                    className="w-full p-4 bg-slate-50/50 border border-slate-200 rounded-xl text-sm outline-none focus:border-[#A3D8F4] focus:ring-4 focus:ring-[#A3D8F4]/20 min-h-[80px] transition-all resize-none"
-                    placeholder="Enter instructions for the AI..."
-                    value={slot.prompt}
-                    onChange={e => {
-                      const d = [...state.data]; d[idx].prompt = e.target.value;
-                      save({ ...state, data: d });
-                    }}
-                  />
+                  {[1, 2, 3, 4, 5].map(num => (
+                    <div key={num}>
+                      <textarea
+                        className="w-full p-3 bg-slate-50/50 border border-slate-200 rounded-xl text-xs outline-none focus:border-[#A3D8F4] focus:ring-4 focus:ring-[#A3D8F4]/20 min-h-[60px] transition-all resize-none"
+                        placeholder={`Prompt ${num} instructions...`}
+                        value={slot[`prompt${num}`] || ""}
+                        onChange={e => {
+                          const d = [...state.data]; 
+                          d[idx][`prompt${num}`] = e.target.value;
+                          save({ ...state, data: d });
+                        }}
+                      />
+                    </div>
+                  ))}
                 </div>
 
                 {/* 2. Knowledge Base */}
@@ -214,36 +222,58 @@ export default function Dashboard() {
                   
                   if (history.length === 0) return null;
                   
+                  const recentHistory = history.slice().reverse().slice(0, 3);
+                  
                   return (
                     <div className="bg-slate-50/50 p-4 border border-slate-200 rounded-xl">
                       <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block mb-3">
-                        Capture History
+                        Latest Answers (Max 3)
                       </label>
-                      <div className="space-y-3 max-h-[300px] overflow-y-auto pr-2 custom-scrollbar">
-                        {history.slice().reverse().map((h: any, i: number) => (
-                          <div key={i} className="flex gap-4 bg-white p-3 rounded-xl border border-slate-100 shadow-[0_2px_10px_rgb(0,0,0,0.02)] transition-all hover:shadow-[0_4px_15px_rgb(13,110,253,0.05)]">
-                            {h.imageUrl && (
-                              <img 
-                                src={h.imageUrl} 
-                                alt="stealth-snap" 
-                                className="w-20 h-20 object-cover rounded-lg border border-[#A3D8F4]/50 shadow-sm"
-                              />
-                            )}
-                            <div className="flex-1 flex flex-col">
-                              <div className="flex justify-between items-center mb-1.5">
-                                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">
-                                  {new Date(h.timestamp).toLocaleString()}
-                                </span>
-                                <span className="text-[9px] font-bold text-[#0D6EFD] bg-[#A3D8F4]/20 px-2 py-0.5 rounded-full uppercase">
-                                  {h.provider}
-                                </span>
-                              </div>
-                              <p className="text-xs text-slate-700 whitespace-pre-wrap leading-relaxed">
-                                {h.aiResponse}
-                              </p>
+                      <div className="space-y-3">
+                        {recentHistory.map((h: any, i: number) => {
+                          const historyId = `${idx}-${i}`;
+                          const isExpanded = expandedHistory[historyId];
+                          return (
+                            <div key={i} className="bg-white rounded-xl border border-slate-100 shadow-[0_2px_10px_rgb(0,0,0,0.02)] transition-all hover:shadow-[0_4px_15px_rgb(13,110,253,0.05)] overflow-hidden">
+                              <button 
+                                onClick={() => toggleHistory(historyId)}
+                                className="w-full text-left p-4 flex justify-between items-center bg-white hover:bg-slate-50 transition-colors"
+                              >
+                                <div className="flex items-center gap-3">
+                                  <span className="text-xs font-semibold text-slate-700">Latest Answer {i + 1}</span>
+                                  <span className="text-[9px] font-bold text-[#0D6EFD] bg-[#A3D8F4]/20 px-2 py-0.5 rounded-full uppercase">
+                                    {h.provider}
+                                  </span>
+                                </div>
+                                <div className="flex items-center gap-3">
+                                  <span className="text-[9px] font-medium text-slate-400">
+                                    {new Date(h.timestamp).toLocaleString()}
+                                  </span>
+                                  <svg className={`w-4 h-4 text-slate-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                                  </svg>
+                                </div>
+                              </button>
+                              
+                              {isExpanded && (
+                                <div className="p-4 border-t border-slate-50 flex gap-4 bg-slate-50/30">
+                                  {h.imageUrl && (
+                                    <img 
+                                      src={h.imageUrl} 
+                                      alt="stealth-snap" 
+                                      className="w-20 h-20 object-cover rounded-lg border border-[#A3D8F4]/50 shadow-sm"
+                                    />
+                                  )}
+                                  <div className="flex-1">
+                                    <p className="text-xs text-slate-700 whitespace-pre-wrap leading-relaxed">
+                                      {h.aiResponse}
+                                    </p>
+                                  </div>
+                                </div>
+                              )}
                             </div>
-                          </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     </div>
                   );
