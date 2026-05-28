@@ -96,7 +96,15 @@ export default function Dashboard() {
 
         <header className="flex justify-between items-end border-b-2 border-[#A3D8F4] pb-4">
           <h1 className="text-3xl font-black text-[#0D6EFD] tracking-tight">STEALTH <span className="font-light">HQ</span></h1>
-          <span className="text-[10px] font-bold text-[#0D6EFD] bg-[#A3D8F4]/30 px-3 py-1 rounded-full">OPENROUTER BRIDGE</span>
+          <div className="flex items-center gap-2">
+            <a
+              href="/wifi"
+              className="text-[10px] font-bold text-emerald-600 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 px-3 py-1 rounded-full transition-colors"
+            >
+              📶 WIFI
+            </a>
+            <span className="text-[10px] font-bold text-[#0D6EFD] bg-[#A3D8F4]/30 px-3 py-1 rounded-full">OPENROUTER BRIDGE</span>
+          </div>
         </header>
 
         <div className="grid gap-5">
