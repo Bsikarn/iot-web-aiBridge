@@ -5,7 +5,7 @@ import { Inter } from 'next/font/google';
 
 const inter = Inter({ subsets: ['latin'] });
 
-type WifiEntry = { ssid: string; password: string };
+type WifiEntry = { ssid: string; password: string; username?: string };
 
 export default function WifiManager() {
   const [list, setList] = useState<WifiEntry[]>([]);
@@ -18,6 +18,7 @@ export default function WifiManager() {
   // Form refs — no need for controlled state on a simple static form
   const ssidRef = useRef<HTMLInputElement>(null);
   const passRef = useRef<HTMLInputElement>(null);
+  const userRef = useRef<HTMLInputElement>(null);
 
   // Load the WiFi list by fetching the plain-text output then re-parsing it
   const loadList = async () => {
@@ -27,15 +28,16 @@ export default function WifiManager() {
 
     setRawOutput(text);
 
-    // Parse "SSID,PASS|SSID2,PASS2" back into an array for the UI
+    // Parse "SSID,PASS,USER|SSID2,PASS2," back into an array for the UI
     if (text.trim() === '') {
       setList([]);
     } else {
-      const parsed: WifiEntry[] = text.split('|').map(pair => {
-        const commaIdx = pair.indexOf(',');
+      const parsed: WifiEntry[] = text.split('|').map(entry => {
+        const parts = entry.split(',');
         return {
-          ssid: pair.slice(0, commaIdx),
-          password: pair.slice(commaIdx + 1),
+          ssid: parts[0] ?? '',
+          password: parts[1] ?? '',
+          username: parts[2] ?? '',
         };
       });
       setList(parsed);
@@ -49,6 +51,7 @@ export default function WifiManager() {
     e.preventDefault();
     const ssid = ssidRef.current?.value.trim() ?? '';
     const password = passRef.current?.value ?? '';
+    const username = userRef.current?.value.trim() ?? '';
 
     if (!ssid) return;
     setSubmitting(true);
@@ -56,7 +59,7 @@ export default function WifiManager() {
     const res = await fetch('/api/wifi-sync', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ssid, password }),
+      body: JSON.stringify({ ssid, password, username }),
     });
 
     const data = await res.json();
@@ -67,6 +70,7 @@ export default function WifiManager() {
       // Reset form and reload
       if (ssidRef.current) ssidRef.current.value = '';
       if (passRef.current) passRef.current.value = '';
+      if (userRef.current) userRef.current.value = '';
       await loadList();
     }
     setSubmitting(false);
@@ -141,6 +145,19 @@ export default function WifiManager() {
               autoComplete="off"
               className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:border-[#A3D8F4] focus:ring-4 focus:ring-[#A3D8F4]/20 transition-all placeholder:text-slate-300 font-mono"
             />
+            <div className="relative">
+              <input
+                ref={userRef}
+                id="wifi-username"
+                type="text"
+                placeholder="Username (Optional / Enterprise)"
+                autoComplete="off"
+                className="w-full px-4 py-3 bg-slate-50 border border-dashed border-slate-300 rounded-xl text-sm outline-none focus:border-[#A3D8F4] focus:ring-4 focus:ring-[#A3D8F4]/20 transition-all placeholder:text-slate-300"
+              />
+              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[9px] font-bold text-amber-400 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded-md tracking-wider pointer-events-none">
+                ENTERPRISE
+              </span>
+            </div>
           </div>
 
           <button
@@ -189,12 +206,22 @@ export default function WifiManager() {
                     {idx + 1}
                   </span>
 
-                  {/* SSID + Password */}
+                  {/* SSID + Password + Username */}
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-semibold text-slate-700 truncate">{entry.ssid}</p>
+                    <div className="flex items-center gap-1.5">
+                      <p className="text-sm font-semibold text-slate-700 truncate">{entry.ssid}</p>
+                      {entry.username && (
+                        <span className="text-[8px] font-black text-amber-500 bg-amber-50 border border-amber-200 px-1 py-0.5 rounded flex-shrink-0">
+                          ENT
+                        </span>
+                      )}
+                    </div>
                     <p className="text-xs text-slate-400 font-mono mt-0.5">
                       {visiblePass.has(entry.ssid) ? entry.password : '••••••••'}
                     </p>
+                    {entry.username && (
+                      <p className="text-[10px] text-amber-500 mt-0.5 truncate">@{entry.username}</p>
+                    )}
                   </div>
 
                   {/* Toggle password visibility */}

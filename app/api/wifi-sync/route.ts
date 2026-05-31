@@ -6,7 +6,7 @@ import path from 'path';
 // Path to the local JSON data store
 const DATA_FILE = path.join(process.cwd(), 'data', 'wifi-credentials.json');
 
-type WifiEntry = { ssid: string; password: string };
+type WifiEntry = { ssid: string; password: string; username?: string };
 
 // Helper: read credentials from disk
 function readCredentials(): WifiEntry[] {
@@ -25,14 +25,15 @@ function writeCredentials(list: WifiEntry[]): void {
 
 // GET /api/wifi-sync
 // Returns credentials as plain-text delimited string for the ESP32 to parse.
-// Format: SSID1,PASS1|SSID2,PASS2
+// Format: SSID,PASSWORD,USERNAME|SSID2,PASSWORD2,USERNAME2
+// If username is absent, the field is left blank but the comma is kept: SSID,PASS,
 export async function GET() {
   const list = readCredentials();
 
-  // Build the exact plain-text format: SSID,PASS separated by pipe — no spaces
+  // Build: SSID,PASS,USER joined by pipe — no spaces, no trailing newline
   const payload = list
     .filter(entry => entry.ssid.trim() !== '')
-    .map(entry => `${entry.ssid},${entry.password}`)
+    .map(entry => `${entry.ssid},${entry.password},${entry.username ?? ''}`)
     .join('|');
 
   return new NextResponse(payload, {
@@ -42,7 +43,7 @@ export async function GET() {
 }
 
 // POST /api/wifi-sync
-// Body: { ssid: string, password: string }
+// Body: { ssid: string, password: string, username?: string }
 // Adds a new WiFi entry (rejects duplicates by SSID).
 export async function POST(req: NextRequest) {
   const body = await req.json() as WifiEntry;
@@ -58,7 +59,11 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'SSID already exists' }, { status: 409 });
   }
 
-  list.push({ ssid: body.ssid.trim(), password: body.password });
+  list.push({
+    ssid: body.ssid.trim(),
+    password: body.password ?? '',
+    username: body.username?.trim() ?? '',
+  });
   writeCredentials(list);
 
   return NextResponse.json({ ok: true, total: list.length });
