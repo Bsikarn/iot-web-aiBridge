@@ -89,29 +89,54 @@ export default function Dashboard() {
     loadSettings();
   }, []);
 
-  // Save current settings to server
+  // Save current settings to server with robust error reporting
   const handleSave = async (updatedPrompts = prompts, updatedKbs = kbs, updatedModels = models) => {
     setSaving(true);
     setSaveSuccess(false);
+
     try {
+      // Safely format 10 Prompts, 3 KBs, and 10 AI Model slots with fallbacks
+      const safePrompts = Array.from({ length: 10 }, (_, i) => updatedPrompts[i] || "");
+      const safeKbs = Array.from({ length: 3 }, (_, i) => updatedKbs[i] || "");
+      const safeModels = Array.from({ length: 10 }, (_, i) => updatedModels[i] || PRESET_MODELS[i] || "");
+
+      const payload = {
+        prompts: safePrompts,
+        kbs: safeKbs,
+        models: safeModels
+      };
+
+      console.log("1. Constructing Save Payload:", payload);
+      console.log("2. Sending POST to /api/settings...");
+
       const res = await fetch('/api/settings', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          prompts: updatedPrompts,
-          kbs: updatedKbs,
-          models: updatedModels
-        })
+        body: JSON.stringify(payload)
       });
-      const data = await res.json();
-      if (data.success) {
-        setSaveSuccess(true);
-        setTimeout(() => setSaveSuccess(false), 3000);
-      } else {
-        alert("Failed to save settings: " + (data.error || "Unknown error"));
+
+      const responseText = await res.text();
+      let data: any = null;
+      try {
+        data = JSON.parse(responseText);
+      } catch (parseErr) {
+        console.warn("Response body could not be parsed as JSON:", parseErr);
       }
-    } catch (err) {
-      alert("Network error while saving settings");
+
+      if (!res.ok || (data && !data.success)) {
+        const errorMessage = data?.error || responseText || res.statusText || "Unknown Error";
+        console.error(`Save Failed [HTTP ${res.status}]:`, errorMessage);
+        alert(`Save Failed [${res.status}]: ${errorMessage}`);
+        return;
+      }
+
+      console.log("3. Settings Saved Successfully:", data);
+      setSaveSuccess(true);
+      setTimeout(() => setSaveSuccess(false), 3000);
+
+    } catch (err: any) {
+      console.error("Client Exception Details:", err);
+      alert("Save Exception: " + (err.message || String(err)));
     } finally {
       setSaving(false);
     }

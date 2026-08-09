@@ -12,6 +12,7 @@
     "@anthropic-ai/sdk": "^0.96.0",
     "@google/generative-ai": "^0.24.1",
     "@vercel/edge-config": "^1.4.0",
+    "@vercel/global-config": "^1.5.1",
     "dotenv": "^17.4.2",
     "next": "16.2.6",
     "openai": "^6.37.0",

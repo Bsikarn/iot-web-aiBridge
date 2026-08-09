@@ -17,6 +17,12 @@ export interface AISetting {
   history: HistoryRecord[];
 }
 
+export interface UpdateResult {
+  success: boolean;
+  error?: string;
+  status?: number;
+}
+
 export const DEFAULT_AI_SETTING: AISetting = {
   prompts: [
     "Identify the main text or formula in the image and explain it concisely.",
@@ -85,7 +91,7 @@ export async function getAISettings(): Promise<AISetting> {
 /**
  * Update AI Settings in Vercel Edge Config via Vercel REST API, and update local cache.
  */
-export async function updateAISettings(data: AISetting): Promise<boolean> {
+export async function updateAISettings(data: AISetting): Promise<UpdateResult> {
   // Normalize arrays to ensure exact element counts
   const prompts = Array.from({ length: 10 }, (_, i) => data.prompts[i] || "");
   const kbs = Array.from({ length: 3 }, (_, i) => data.kbs[i] || "");
@@ -140,16 +146,27 @@ export async function updateAISettings(data: AISetting): Promise<boolean> {
 
       if (!res.ok) {
         const errText = await res.text();
-        console.error("[Edge Config API Error]:", errText);
-        return false;
+        let parsedErr: any = null;
+        try { parsedErr = JSON.parse(errText); } catch {}
+        const errorMsg = parsedErr?.error?.message || parsedErr?.error || errText || res.statusText;
+        console.error(`[Edge Config API Error ${res.status}]:`, errorMsg);
+        return {
+          success: false,
+          status: res.status,
+          error: `Vercel Edge Config API Error (${res.status}): ${errorMsg}`
+        };
       }
 
-      return true;
-    } catch (error) {
+      return { success: true };
+    } catch (error: any) {
       console.error("[Edge Config Save Exception]:", error);
-      return false;
+      return {
+        success: false,
+        status: 500,
+        error: `Edge Config Save Exception: ${error?.message || String(error)}`
+      };
     }
   }
 
-  return true;
+  return { success: true };
 }

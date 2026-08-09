@@ -13,6 +13,18 @@ export async function GET() {
 
 export async function POST(req: Request) {
   try {
+    const token = process.env.VERCEL_API_TOKEN || process.env.EDGE_CONFIG_TOKEN;
+    const edgeConfigId = process.env.EDGE_CONFIG_ID;
+
+    // Check for required Vercel Edge Config environment variables
+    if (!token || !edgeConfigId) {
+      console.error("POST /api/settings error: Missing VERCEL_API_TOKEN or EDGE_CONFIG_ID");
+      return NextResponse.json(
+        { error: "Missing required environment variable: VERCEL_API_TOKEN or EDGE_CONFIG_ID" },
+        { status: 500 }
+      );
+    }
+
     const body = await req.json();
     const currentSettings = await getAISettings();
 
@@ -23,7 +35,6 @@ export async function POST(req: Request) {
     if (Array.isArray(body.models)) {
       newModels = Array.from({ length: 10 }, (_, i) => body.models[i] || currentSettings.models[i] || DEFAULT_AI_SETTING.models[i]);
     } else if (body.models && typeof body.models === 'object') {
-      // Legacy conversion fallback
       newModels = [
         body.models.gemini || currentSettings.models[0] || DEFAULT_AI_SETTING.models[0],
         body.models.gpt || currentSettings.models[1] || DEFAULT_AI_SETTING.models[1],
@@ -41,11 +52,21 @@ export async function POST(req: Request) {
       history: currentSettings.history || []
     };
 
-    const success = await updateAISettings(updatedSettings);
+    const result = await updateAISettings(updatedSettings);
+
+    if (!result.success) {
+      return NextResponse.json(
+        { error: result.error || "Failed to update Vercel Edge Config" },
+        { status: result.status || 500 }
+      );
+    }
     
-    return NextResponse.json({ success, data: updatedSettings });
+    return NextResponse.json({ success: true, data: updatedSettings });
   } catch (error: any) {
     console.error("POST /api/settings error:", error);
-    return NextResponse.json({ error: error.message || "Failed to update settings" }, { status: 500 });
+    return NextResponse.json(
+      { error: error.message || "An unexpected error occurred while updating settings" },
+      { status: 500 }
+    );
   }
 }
