@@ -94,10 +94,16 @@ export async function POST(req: Request) {
       }
     }
 
-    // Construct prompt payload combining KB context and system prompt
-    const kbHeader = activeKb.trim() ? `[KNOWLEDGE BASE CONTEXT (KB #${kbNum})]:\n${activeKb}\n\n` : "";
-    const promptHeader = `[USER INSTRUCTION (Prompt #${promptNum})]:\n${activePrompt}`;
-    const fullPromptText = `${kbHeader}${promptHeader}`;
+    // Enforce Structured Context Wrapping using XML tags and System Instructions
+    const systemInstruction = `System Directive: Analyze the attached image and answer the user query. You MUST strictly rely on the information provided inside <knowledge_base> tags to answer the question or solve the problem whenever applicable.`;
+
+    const kbSection = activeKb.trim()
+      ? `<knowledge_base>\n${activeKb.trim()}\n</knowledge_base>`
+      : `<knowledge_base>\nNo additional context provided.\n</knowledge_base>`;
+
+    const userInputSection = `<user_input>\n[Prompt #${promptNum}]: ${activePrompt.trim()}\n</user_input>`;
+
+    const fullPromptText = `${systemInstruction}\n\n${kbSection}\n\n${userInputSection}`;
 
     // Send payload to selected AI Model via OpenRouter
     const imagePayloadUrl = base64DataUrl || imageUrl;
