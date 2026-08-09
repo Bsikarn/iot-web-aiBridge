@@ -11,7 +11,7 @@ const openrouter = new OpenAI({
   apiKey: process.env.OPENROUTER_API_KEY || "",
   defaultHeaders: {
     "HTTP-Referer": "https://aicalculate-iot.vercel.app/",
-    "X-Title": "AI Calculate IOT HQ",
+    "X-Title": "Ai Bridge",
   }
 });
 

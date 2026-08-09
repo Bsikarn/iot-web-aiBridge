@@ -1,4 +1,4 @@
-# Stealth AI Calculator (HQ)
+# Ai Bridge
 
 A stealth hardware-software integration allowing users to capture images from a calculator-embedded ESP32 camera, process them via a Next.js command center (HQ), and receive AI-generated answers with custom prompts and knowledge bases. A personal project for Sikarn Pattarasirimongkol, focusing on Full-stack and IoT AI integration.
 

@@ -195,7 +195,7 @@ export default function Dashboard() {
       <div className={`min-h-screen flex flex-col items-center justify-center bg-[#F0F7FF] ${inter.className}`}>
         <div className="w-12 h-12 border-4 border-[#0D6EFD] border-t-transparent rounded-full animate-spin mb-4"></div>
         <div className="font-semibold text-slate-700 tracking-wide animate-pulse">
-          INITIALIZING STEALTH HQ...
+          INITIALIZING AI BRIDGE...
         </div>
       </div>
     );
@@ -212,10 +212,10 @@ export default function Dashboard() {
             </div>
             <div>
               <h1 className="text-2xl font-black text-[#0D6EFD] tracking-tight">
-                STEALTH <span className="font-light text-slate-700">HQ</span>
+                AI <span className="font-light text-slate-700">BRIDGE</span>
               </h1>
               <p className="text-[11px] text-slate-400 font-medium">
-                IoT AI Calculator Central Controller
+                IoT AI Central Controller
               </p>
             </div>
           </div>
@@ -615,7 +615,7 @@ export default function Dashboard() {
       {/* Footer */}
       <footer className="max-w-5xl mx-auto px-6 mt-12 text-center">
         <p className="text-[11px] font-mono text-slate-400 tracking-widest uppercase">
-          STEALTH AI CALCULATOR HQ // 10 PROMPTS • 10 AI MODELS • 3 KNOWLEDGE BASES
+          AI BRIDGE // 10 PROMPTS • 10 AI MODELS • 3 KNOWLEDGE BASES
         </p>
       </footer>
     </div>
