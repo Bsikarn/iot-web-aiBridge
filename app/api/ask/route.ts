@@ -3,6 +3,9 @@ import OpenAI from 'openai';
 import { getAISettings, updateAISettings, HistoryRecord, DEFAULT_AI_SETTING } from '@/lib/edge-config';
 import { uploadToDiscordWebhook } from '@/lib/discord';
 
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 const openrouter = new OpenAI({
   baseURL: "https://openrouter.ai/api/v1",
   apiKey: process.env.OPENROUTER_API_KEY || "",
@@ -37,7 +40,7 @@ export async function POST(req: Request) {
       kbIndexRaw = String(body.kb_index || '1');
     }
 
-    // Load active settings from Vercel Edge Config
+    // Load active settings from Vercel Global/Edge Config
     const settings = await getAISettings();
 
     // Parse and clamp AI Model index (1 to 10)

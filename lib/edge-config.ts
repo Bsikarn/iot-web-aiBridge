@@ -1,4 +1,4 @@
-import { get } from '@vercel/edge-config';
+import { createClient } from '@vercel/edge-config';
 
 export interface HistoryRecord {
   timestamp: string;
@@ -56,16 +56,19 @@ export const DEFAULT_AI_SETTING: AISetting = {
   history: []
 };
 
-// In-memory fallback cache for local dev or when Edge Config API is unreachable
+// In-memory fallback cache for local dev or when Global Config / Edge Config API is unreachable
 let localMemoryCache: AISetting = { ...DEFAULT_AI_SETTING };
 
 /**
- * Retrieve AI Settings from Vercel Edge Config with fallback to local cache/default.
+ * Retrieve AI Settings from Vercel Global/Edge Config with fallback to local cache/default.
  */
 export async function getAISettings(): Promise<AISetting> {
+  const connectionString = process.env.GLOBAL_CONFIG || process.env.EDGE_CONFIG;
+
   try {
-    if (process.env.EDGE_CONFIG) {
-      const remoteData = await get<AISetting>('ai_setting');
+    if (connectionString) {
+      const client = createClient(connectionString);
+      const remoteData = await client.get<AISetting>('ai_setting');
       if (remoteData) {
         // Ensure models is normalized as an array of 10 strings
         if (remoteData.models && !Array.isArray(remoteData.models)) {
@@ -82,14 +85,14 @@ export async function getAISettings(): Promise<AISetting> {
       }
     }
   } catch (error) {
-    console.warn("[Edge Config] Error fetching 'ai_setting', using fallback:", error);
+    console.warn("[Global Config] Error fetching 'ai_setting', using fallback:", error);
   }
 
   return localMemoryCache;
 }
 
 /**
- * Update AI Settings in Vercel Edge Config via Vercel REST API, and update local cache.
+ * Update AI Settings in Vercel Global/Edge Config via Vercel REST API, and update local cache.
  */
 export async function updateAISettings(data: AISetting): Promise<UpdateResult> {
   // Normalize arrays to ensure exact element counts
@@ -120,14 +123,15 @@ export async function updateAISettings(data: AISetting): Promise<UpdateResult> {
     history
   };
 
+  // Instantly synchronize in-memory cache for immediate UI revalidation
   localMemoryCache = updatedSetting;
 
-  const edgeConfigId = process.env.EDGE_CONFIG_ID;
-  const token = process.env.VERCEL_API_TOKEN || process.env.EDGE_CONFIG_TOKEN;
+  const configId = process.env.GLOBAL_CONFIG_ID || process.env.EDGE_CONFIG_ID;
+  const token = process.env.VERCEL_API_TOKEN || process.env.GLOBAL_CONFIG_TOKEN || process.env.EDGE_CONFIG_TOKEN;
 
-  if (edgeConfigId && token) {
+  if (configId && token) {
     try {
-      const res = await fetch(`https://api.vercel.com/v1/edge-config/${edgeConfigId}/items`, {
+      const res = await fetch(`https://api.vercel.com/v1/edge-config/${configId}/items`, {
         method: 'PATCH',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -149,21 +153,27 @@ export async function updateAISettings(data: AISetting): Promise<UpdateResult> {
         let parsedErr: any = null;
         try { parsedErr = JSON.parse(errText); } catch {}
         const errorMsg = parsedErr?.error?.message || parsedErr?.error || errText || res.statusText;
-        console.error(`[Edge Config API Error ${res.status}]:`, errorMsg);
+        console.error(`[Global Config API Error ${res.status}]:`, errorMsg);
+
+        let detailedHint = "";
+        if (res.status === 404) {
+          detailedHint = " (HTTP 404: Verify GLOBAL_CONFIG_ID / EDGE_CONFIG_ID and ensure store ID is correct)";
+        }
+
         return {
           success: false,
           status: res.status,
-          error: `Vercel Edge Config API Error (${res.status}): ${errorMsg}`
+          error: `Vercel Config API Error (${res.status}): ${errorMsg}${detailedHint}`
         };
       }
 
       return { success: true };
     } catch (error: any) {
-      console.error("[Edge Config Save Exception]:", error);
+      console.error("[Global Config Save Exception]:", error);
       return {
         success: false,
         status: 500,
-        error: `Edge Config Save Exception: ${error?.message || String(error)}`
+        error: `Global Config Save Exception: ${error?.message || String(error)}`
       };
     }
   }

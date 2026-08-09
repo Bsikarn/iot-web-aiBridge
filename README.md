@@ -15,7 +15,7 @@ A stealth hardware-software integration allowing users to capture images from a 
 
 ### Backend & Storage
 - Next.js API Routes (Serverless Functions)
-- Vercel Edge Config (`@vercel/edge-config`)
+- Vercel Global/Edge Config (`@vercel/edge-config`)
 - Discord Webhook CDN (Free Image Hosting & History)
 
 ### Tools
@@ -27,7 +27,7 @@ A stealth hardware-software integration allowing users to capture images from a 
 - **10 System Prompts Management** — Unified dashboard managing 10 customizable prompt slots (`prompt_index` 1 to 10).
 - **10 AI Model Slots** — Unified dashboard managing 10 configurable AI model slots (`ai_index` 1 to 10).
 - **3 Knowledge Base Contexts** — Supports multiple `.txt` and `.pdf` document uploads per slot, extracting and appending context.
-- **Vercel Edge Config Integration** — Blazing fast global storage for configurations and active AI settings.
+- **Vercel Global Config Integration** — Blazing fast global storage for configurations and active AI settings, supporting `GLOBAL_CONFIG` and legacy `EDGE_CONFIG`.
 - **Discord Webhook Image Storage** — Forwards captured images to Discord CDN for free persistent image hosting and history logs.
 - **Unified Answer History** — Displays the latest 3 AI responses, active model details, and Discord CDN image previews.
 
@@ -66,7 +66,7 @@ A stealth hardware-software integration allowing users to capture images from a 
 ```env
 OPENROUTER_API_KEY=
 DISCORD_WEBHOOK_URL=
-EDGE_CONFIG=
-EDGE_CONFIG_ID=
-VERCEL_API_TOKEN=
+GLOBAL_CONFIG= (or EDGE_CONFIG=)
+GLOBAL_CONFIG_ID= (or EDGE_CONFIG_ID=)
+VERCEL_API_TOKEN= (or GLOBAL_CONFIG_TOKEN=)
 ```

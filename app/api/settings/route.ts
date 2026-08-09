@@ -1,6 +1,9 @@
 import { NextResponse } from 'next/server';
 import { getAISettings, updateAISettings, AISetting, DEFAULT_AI_SETTING } from '@/lib/edge-config';
 
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 export async function GET() {
   try {
     const settings = await getAISettings();
@@ -13,14 +16,14 @@ export async function GET() {
 
 export async function POST(req: Request) {
   try {
-    const token = process.env.VERCEL_API_TOKEN || process.env.EDGE_CONFIG_TOKEN;
-    const edgeConfigId = process.env.EDGE_CONFIG_ID;
+    const token = process.env.VERCEL_API_TOKEN || process.env.GLOBAL_CONFIG_TOKEN || process.env.EDGE_CONFIG_TOKEN;
+    const configId = process.env.GLOBAL_CONFIG_ID || process.env.EDGE_CONFIG_ID;
 
-    // Check for required Vercel Edge Config environment variables
-    if (!token || !edgeConfigId) {
-      console.error("POST /api/settings error: Missing VERCEL_API_TOKEN or EDGE_CONFIG_ID");
+    // Check for required Vercel Global/Edge Config environment variables
+    if (!token || !configId) {
+      console.error("POST /api/settings error: Missing VERCEL_API_TOKEN or GLOBAL_CONFIG_ID / EDGE_CONFIG_ID");
       return NextResponse.json(
-        { error: "Missing required environment variable: VERCEL_API_TOKEN or EDGE_CONFIG_ID" },
+        { error: "Missing required environment variable: VERCEL_API_TOKEN, GLOBAL_CONFIG_TOKEN, or GLOBAL_CONFIG_ID / EDGE_CONFIG_ID" },
         { status: 500 }
       );
     }
@@ -56,7 +59,7 @@ export async function POST(req: Request) {
 
     if (!result.success) {
       return NextResponse.json(
-        { error: result.error || "Failed to update Vercel Edge Config" },
+        { error: result.error || "Failed to update Vercel Config" },
         { status: result.status || 500 }
       );
     }
