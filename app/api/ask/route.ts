@@ -1,8 +1,7 @@
-// app/api/ask/route.ts
 import { NextResponse } from 'next/server';
-import OpenAI from "openai";
-import { prisma } from '@/lib/prisma';
-import { createClient } from '@supabase/supabase-js';
+import OpenAI from 'openai';
+import { getAISettings, updateAISettings, HistoryRecord, DEFAULT_AI_SETTING } from '@/lib/edge-config';
+import { uploadToDiscordWebhook } from '@/lib/discord';
 
 const openrouter = new OpenAI({
   baseURL: "https://openrouter.ai/api/v1",
@@ -14,127 +13,140 @@ const openrouter = new OpenAI({
 });
 
 export async function POST(req: Request) {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-  if (!supabaseUrl || !supabaseKey) {
-    return new NextResponse("Error: Supabase credentials are missing", { status: 500 });
-  }
-
-  const supabase = createClient(supabaseUrl, supabaseKey);
-
   try {
-    const formData = await req.formData();
-    const mode = formData.get('mode') as string;
-    const promptIndex = (formData.get('prompt_index') as string) || "1";
-    const image = formData.get('image') as File | null;
-    const provider = (formData.get('ai_provider') as string) || 'gemini';
+    let mode = 'normal';
+    let aiIndexRaw = '1';
+    let promptIndexRaw = '1';
+    let kbIndexRaw = '1';
+    let imageFile: File | null = null;
 
-    if (mode !== 'reuse' && !image) {
-      return new NextResponse("Error: No image received", { status: 400 });
+    const contentType = req.headers.get('content-type') || '';
+
+    if (contentType.includes('multipart/form-data')) {
+      const formData = await req.formData();
+      mode = (formData.get('mode') as string) || 'normal';
+      aiIndexRaw = (formData.get('ai_index') as string) || (formData.get('ai_provider') as string) || '1';
+      promptIndexRaw = (formData.get('prompt_index') as string) || '1';
+      kbIndexRaw = (formData.get('kb_index') as string) || '1';
+      imageFile = formData.get('image') as File | null;
+    } else if (contentType.includes('application/json')) {
+      const body = await req.json();
+      mode = body.mode || 'normal';
+      aiIndexRaw = String(body.ai_index || body.ai_provider || '1');
+      promptIndexRaw = String(body.prompt_index || '1');
+      kbIndexRaw = String(body.kb_index || '1');
     }
 
-    const config = await prisma.slot.findFirst({
-      where: { isActive: true }
-    });
+    // Load active settings from Vercel Edge Config
+    const settings = await getAISettings();
 
-    if (!config) {
-      return new NextResponse("Error: Slot configuration not found", { status: 500 });
+    // Parse and clamp AI Model index (1 to 10)
+    let parsedAiIndex = parseInt(aiIndexRaw, 10);
+    if (isNaN(parsedAiIndex)) {
+      // Legacy provider string fallback mapping
+      const lower = aiIndexRaw.toLowerCase();
+      if (lower.includes('gpt')) parsedAiIndex = 2;
+      else if (lower.includes('claude')) parsedAiIndex = 3;
+      else parsedAiIndex = 1;
     }
 
-    // 🔓 ปลดล็อคแล้ว: ใช้โมเดลตามที่นายตั้งค่าไว้ในหน้าเว็บเป๊ะๆ
-    const models = config.models as Record<string, string>;
-    const targetModel = models[provider];
+    const aiNum = Math.max(1, Math.min(10, parsedAiIndex));
+    const promptNum = Math.max(1, Math.min(10, parseInt(promptIndexRaw, 10) || 1));
+    const kbNum = Math.max(1, Math.min(3, parseInt(kbIndexRaw, 10) || 1));
 
-    if (!targetModel) {
-      return new NextResponse(`Error: No model selected for provider ${provider}`, { status: 400 });
-    }
+    const activePrompt = settings.prompts[promptNum - 1] || "";
+    const activeKb = settings.kbs[kbNum - 1] || "";
+    const activeModel = settings.models[aiNum - 1] || DEFAULT_AI_SETTING.models[aiNum - 1] || "google/gemini-2.5-flash";
 
-    let publicUrl = "";
-    let base64Image = "";
-    let mimeType = "image/jpeg";
-    let imageUrlPayload: any = {};
+    let imageUrl = "";
+    let base64DataUrl = "";
 
     if (mode === 'reuse') {
-      const currentHistory = config.history ? JSON.parse(config.history) : [];
-      if (currentHistory.length === 0) {
-        return new NextResponse("Error: No history available to reuse", { status: 400 });
+      const history = settings.history || [];
+      if (history.length === 0) {
+        return NextResponse.json({ error: "No historical record available to reuse" }, { status: 400 });
       }
-      publicUrl = currentHistory[currentHistory.length - 1].imageUrl;
-      imageUrlPayload = { url: publicUrl };
+      imageUrl = history[0].imageUrl;
+      base64DataUrl = imageUrl;
     } else {
-      const arrayBuffer = await image!.arrayBuffer();
-      base64Image = Buffer.from(arrayBuffer).toString("base64");
-      mimeType = image!.type || "image/jpeg";
-
-      // --- อัปโหลดรูปขึ้น Supabase Storage ---
-      const filename = `${Date.now()}-${Math.random().toString(36).substring(7)}.jpg`;
-
-      const { error: uploadError } = await supabase.storage
-        .from('stealth-snaps')
-        .upload(filename, arrayBuffer, {
-          contentType: mimeType,
-          upsert: false
-        });
-
-      if (uploadError) {
-        console.error("Supabase Upload Error:", uploadError.message);
-        return new NextResponse(`Storage Error: ${uploadError.message}`, { status: 500 });
+      if (!imageFile) {
+        return NextResponse.json({ error: "No image file provided in multipart payload" }, { status: 400 });
       }
 
-      const { data: publicUrlData } = supabase.storage
-        .from('stealth-snaps')
-        .getPublicUrl(filename);
+      const arrayBuffer = await imageFile.arrayBuffer();
+      const mimeType = imageFile.type || "image/jpeg";
+      const base64Image = Buffer.from(arrayBuffer).toString("base64");
+      base64DataUrl = `data:${mimeType};base64,${base64Image}`;
 
-      publicUrl = publicUrlData.publicUrl;
-      imageUrlPayload = { url: `data:${mimeType};base64,${base64Image}` };
+      // Upload image to Discord Webhook and get Discord CDN URL
+      try {
+        imageUrl = await uploadToDiscordWebhook(
+          arrayBuffer,
+          imageFile.name || `snap-${Date.now()}.jpg`,
+          mimeType
+        );
+      } catch (uploadError: any) {
+        console.error("Discord Webhook upload error:", uploadError);
+        imageUrl = base64DataUrl;
+      }
     }
 
-    // --- ส่งให้ AI ---
-    const promptKey = `prompt${promptIndex}` as keyof typeof config;
-    const selectedPrompt = config[promptKey] as string || "";
+    // Construct prompt payload combining KB context and system prompt
+    const kbHeader = activeKb.trim() ? `[KNOWLEDGE BASE CONTEXT (KB #${kbNum})]:\n${activeKb}\n\n` : "";
+    const promptHeader = `[USER INSTRUCTION (Prompt #${promptNum})]:\n${activePrompt}`;
+    const fullPromptText = `${kbHeader}${promptHeader}`;
 
-    const knowledgeBase = config.context ? `[KNOWLEDGE BASE]:\n${config.context}\n\n` : "";
-    const instruction = `[USER INSTRUCTION]:\n${selectedPrompt}`;
-    const fullPrompt = `${knowledgeBase}${instruction}`;
-
+    // Send payload to selected AI Model via OpenRouter
+    const imagePayloadUrl = base64DataUrl || imageUrl;
     const response = await openrouter.chat.completions.create({
-      model: targetModel,
+      model: activeModel,
       messages: [
         {
           role: "user",
           content: [
-            { type: "text", text: fullPrompt },
+            { type: "text", text: fullPromptText },
             {
               type: "image_url",
-              image_url: imageUrlPayload
+              image_url: { url: imagePayloadUrl }
             }
-          ],
-        },
+          ]
+        }
       ],
       max_tokens: 500,
     });
 
-    const aiResult = response.choices[0]?.message?.content || "AI did not return a response.";
+    const aiReply = response.choices[0]?.message?.content || "AI did not return any response.";
 
-    // บันทึกประวัติ
-    const currentHistory = config.history ? JSON.parse(config.history) : [];
-    currentHistory.push({
+    // Record interaction in history (Max 3 records)
+    const newRecord: HistoryRecord = {
       timestamp: new Date().toISOString(),
-      imageUrl: publicUrl,
-      aiResponse: aiResult,
-      provider: provider
+      provider: `Model #${aiNum}`,
+      model: activeModel,
+      promptIndex: promptNum,
+      kbIndex: kbNum,
+      aiResponse: aiReply,
+      imageUrl: imageUrl || base64DataUrl
+    };
+
+    const updatedHistory = [newRecord, ...(settings.history || [])].slice(0, 3);
+    await updateAISettings({
+      ...settings,
+      history: updatedHistory
     });
 
-    await prisma.slot.update({
-      where: { id: config.id },
-      data: { history: JSON.stringify(currentHistory) }
-    });
-
-    return new NextResponse(aiResult, { status: 200 });
+    // Return JSON payload to IoT calculator including active_model
+    return NextResponse.json({
+      reply: aiReply,
+      active_prompt: activePrompt,
+      active_model: activeModel,
+      active_kb: activeKb ? `KB #${kbNum} (${activeKb.length} chars)` : `KB #${kbNum} (Empty)`,
+      image_url: imageUrl
+    }, { status: 200 });
 
   } catch (error: any) {
-    console.error("Critical API Error:", error.message);
-    return new NextResponse(`API Error: ${error.message}`, { status: 500 });
+    console.error("API /api/ask Critical Error:", error);
+    return NextResponse.json({
+      error: error.message || "An error occurred while processing the AI request"
+    }, { status: 500 });
   }
 }

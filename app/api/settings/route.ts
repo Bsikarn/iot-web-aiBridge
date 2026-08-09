@@ -1,43 +1,10 @@
 import { NextResponse } from 'next/server';
-import { prisma } from '@/lib/prisma';
+import { getAISettings, updateAISettings, AISetting, DEFAULT_AI_SETTING } from '@/lib/edge-config';
 
 export async function GET() {
   try {
-    let slots = await prisma.slot.findMany({
-      orderBy: { slotIndex: 'asc' }
-    });
-
-    if (slots.length === 0) {
-      // Create default 3 slots
-      const defaultSlots = Array.from({ length: 3 }, (_, i) => ({
-        slotIndex: i,
-        isActive: i === 0, // Slot แรกเป็น active by default
-        name: `Slot ${i + 1}`,
-        prompt1: "เห็นภาพไหม ถ้าเห็นตอบแค่ 'เห็น'",
-        prompt2: "",
-        prompt3: "",
-        prompt4: "",
-        prompt5: "",
-        context: "",
-        history: "",
-        models: {
-          gemini: "openrouter/free",
-          gpt: "openrouter/free",
-          claude: "openrouter/free",
-        }
-      }));
-
-      await prisma.slot.createMany({ data: defaultSlots });
-      slots = await prisma.slot.findMany({
-        orderBy: { slotIndex: 'asc' }
-      });
-    }
-
-    // หาว่า slot ไหนกำลัง active อยู่
-    const activeSlotItem = slots.find(s => s.isActive);
-    const activeSlot = activeSlotItem ? activeSlotItem.slotIndex : 0;
-
-    return NextResponse.json({ activeSlot, data: slots });
+    const settings = await getAISettings();
+    return NextResponse.json({ success: true, data: settings });
   } catch (error: any) {
     console.error("GET /api/settings error:", error);
     return NextResponse.json({ error: error.message || "Failed to fetch settings" }, { status: 500 });
@@ -47,34 +14,38 @@ export async function GET() {
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    const { activeSlot, data } = body;
+    const currentSettings = await getAISettings();
+
+    const newPrompts = Array.isArray(body.prompts) ? body.prompts : currentSettings.prompts;
+    const newKbs = Array.isArray(body.kbs) ? body.kbs : currentSettings.kbs;
     
-    if (data && Array.isArray(data)) {
-      for (const slot of data) {
-        if (slot.id) {
-          // อัปเดตข้อมูลของ slot และเซ็ต isActive ให้ตรงกับ activeSlot ที่ส่งมา
-          await prisma.slot.update({
-            where: { id: slot.id },
-            data: {
-              isActive: slot.slotIndex === activeSlot,
-              name: slot.name,
-              prompt1: slot.prompt1 || "",
-              prompt2: slot.prompt2 || "",
-              prompt3: slot.prompt3 || "",
-              prompt4: slot.prompt4 || "",
-              prompt5: slot.prompt5 || "",
-              context: slot.context,
-              models: slot.models,
-              history: slot.history || "",
-            }
-          });
-        }
-      }
+    let newModels: string[] = [];
+    if (Array.isArray(body.models)) {
+      newModels = Array.from({ length: 10 }, (_, i) => body.models[i] || currentSettings.models[i] || DEFAULT_AI_SETTING.models[i]);
+    } else if (body.models && typeof body.models === 'object') {
+      // Legacy conversion fallback
+      newModels = [
+        body.models.gemini || currentSettings.models[0] || DEFAULT_AI_SETTING.models[0],
+        body.models.gpt || currentSettings.models[1] || DEFAULT_AI_SETTING.models[1],
+        body.models.claude || currentSettings.models[2] || DEFAULT_AI_SETTING.models[2],
+        ...currentSettings.models.slice(3)
+      ];
+    } else {
+      newModels = currentSettings.models;
     }
+
+    const updatedSettings: AISetting = {
+      prompts: newPrompts,
+      kbs: newKbs,
+      models: newModels,
+      history: currentSettings.history || []
+    };
+
+    const success = await updateAISettings(updatedSettings);
     
-    return NextResponse.json({ success: true, activeSlot });
-  } catch (error) {
+    return NextResponse.json({ success, data: updatedSettings });
+  } catch (error: any) {
     console.error("POST /api/settings error:", error);
-    return NextResponse.json({ error: "Failed to update settings" }, { status: 500 });
+    return NextResponse.json({ error: error.message || "Failed to update settings" }, { status: 500 });
   }
 }
