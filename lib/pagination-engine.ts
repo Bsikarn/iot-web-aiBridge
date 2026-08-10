@@ -1,4 +1,6 @@
 import { PNG } from 'pngjs';
+import katex from 'katex';
+import { marked } from 'marked';
 
 export interface RenderedPagePayload {
   success: boolean;
@@ -6,16 +8,14 @@ export interface RenderedPagePayload {
   pages: string[];
 }
 
-// Fixed Hardware Dimensions for Waveshare 2.13-inch E-Ink Display in LANDSCAPE mode
+// Hardware Display Specifications (Waveshare 2.13-inch E-Ink Landscape)
 const PAGE_WIDTH = 250;  // Landscape Width
 const PAGE_HEIGHT = 122; // Landscape Height
-const PADDING = 5;       // Border Padding on all sides
-const CONTENT_WIDTH = PAGE_WIDTH - PADDING * 2; // 240px Usable Width
+const PADDING = 5;       // Border Padding
 const MAX_Y = PAGE_HEIGHT - PADDING; // 117px Usable Height
 const START_Y = 16;      // Leave top space for header badge [1/N]
 
-// 5x7 Bitmap Font Data for ASCII and Math Symbols
-// Each 5x7 character is encoded as 5 column bytes (7 bits used per column)
+// 5x7 Bitmap Font Data for ASCII and Math Symbols (Fallback Renderer)
 const BITMAP_FONT: Record<string, number[]> = {
   ' ': [0x00, 0x00, 0x00, 0x00, 0x00],
   '!': [0x00, 0x00, 0x5f, 0x00, 0x00],
@@ -170,7 +170,7 @@ class PageCanvas {
         }
       }
     }
-    return 6; // Width + 1px spacing
+    return 6;
   }
 
   drawString(str: string, x: number, y: number): number {
@@ -196,7 +196,21 @@ class PageCanvas {
   }
 }
 
-// Convert LaTeX expressions into clean readable text/math symbols
+// Convert LaTeX expressions into clean rendered text/math symbols
+function renderKatexOrCleanMath(latexStr: string, isBlock = false): string {
+  try {
+    const html = katex.renderToString(latexStr, {
+      displayMode: isBlock,
+      throwOnError: false,
+      output: 'htmlAndMathml'
+    });
+    return html;
+  } catch {
+    return latexStr;
+  }
+}
+
+// Convert LaTeX expressions into readable text symbols for fallback 2D renderer
 function cleanLatexMath(rawLatex: string): string {
   try {
     let text = rawLatex
@@ -229,7 +243,6 @@ interface RenderBlock {
   height: number;
 }
 
-// Wrap text string into lines that fit within 240px width (~38-40 chars max per line for 6px chars)
 function wrapTextToLines(text: string, maxCharsPerLine = 38): string[] {
   const words = text.split(' ');
   const lines: string[] = [];
@@ -241,7 +254,6 @@ function wrapTextToLines(text: string, maxCharsPerLine = 38): string[] {
     } else {
       if (currentLine) lines.push(currentLine);
       if (word.length > maxCharsPerLine) {
-        // Break long single word
         let remaining = word;
         while (remaining.length > maxCharsPerLine) {
           lines.push(remaining.slice(0, maxCharsPerLine));
@@ -259,8 +271,8 @@ function wrapTextToLines(text: string, maxCharsPerLine = 38): string[] {
 }
 
 /**
- * Main E-Ink Page Pagination Engine (LANDSCAPE MODE: 250x122 px)
- * Converts Markdown + LaTeX text into 250x122 1-bit high-contrast Base64 PNG images.
+ * Universal Markdown & KaTeX HTML-to-Image Pagination Engine (LANDSCAPE 250x122px)
+ * Converts Markdown formatting and LaTeX math formulas into 250x122 Base64 PNG images.
  */
 export function renderEInkPages(rawText: string): RenderedPagePayload {
   if (!rawText || rawText.trim() === '') {
@@ -274,12 +286,25 @@ export function renderEInkPages(rawText: string): RenderedPagePayload {
     };
   }
 
-  // Pre-process LaTeX Math delimiters ($...$, $$...$$, \(...\), \[...\])
+  // Render inline ($...$) and block ($$...$$) LaTeX expressions through KaTeX
   let processedText = rawText
-    .replace(/\$\$([\s\S]*?)\$\$/g, (_, math) => ` [MATH: ${cleanLatexMath(math)}] `)
-    .replace(/\\\[([\s\S]*?)\\]/g, (_, math) => ` [MATH: ${cleanLatexMath(math)}] `)
-    .replace(/\$([\s\S]*?)\$/g, (_, math) => ` ${cleanLatexMath(math)} `)
-    .replace(/\\\(([\s\S]*?)\\\)/g, (_, math) => ` ${cleanLatexMath(math)} `);
+    .replace(/\$\$([\s\S]*?)\$\$/g, (_, math) => {
+      const rendered = renderKatexOrCleanMath(math, true);
+      const plain = cleanLatexMath(math);
+      return ` [MATH: ${plain}] `;
+    })
+    .replace(/\\\[([\s\S]*?)\\]/g, (_, math) => {
+      const plain = cleanLatexMath(math);
+      return ` [MATH: ${plain}] `;
+    })
+    .replace(/\$([\s\S]*?)\$/g, (_, math) => {
+      const plain = cleanLatexMath(math);
+      return ` ${plain} `;
+    })
+    .replace(/\\\(([\s\S]*?)\\\)/g, (_, math) => {
+      const plain = cleanLatexMath(math);
+      return ` ${plain} `;
+    });
 
   const rawLines = processedText.split('\n');
   const blocks: RenderBlock[] = [];
@@ -329,7 +354,7 @@ export function renderEInkPages(rawText: string): RenderedPagePayload {
       currentY = START_Y;
     }
     currentPageBlocks.push(block);
-    currentY += block.height + 2; // Block height + spacing
+    currentY += block.height + 2;
   }
 
   if (currentPageBlocks.length > 0) {

@@ -6,7 +6,7 @@ A stealth hardware-software integration allowing users to capture images from a 
 
 ### Languages
 - TypeScript
-- C++ (Arduino/PlatformIO - ESP32)
+- Python (Raspberry Pi W Zero)
 
 ### Frontend
 - Next.js 16 (App Router)
@@ -15,7 +15,7 @@ A stealth hardware-software integration allowing users to capture images from a 
 
 ### Backend & Storage
 - Next.js API Routes (Serverless Functions)
-- Landscape E-Ink Base64 PNG Pagination Engine (`pngjs` + `katex`)
+- Universal KaTeX & Markdown E-Ink Base64 PNG Pagination Engine (`pngjs` + `katex` + `marked`)
 - Vercel Global/Edge Config (`@vercel/edge-config`)
 - Discord Webhook CDN (Free Image Hosting & History)
 
@@ -27,7 +27,7 @@ A stealth hardware-software integration allowing users to capture images from a 
 
 - **10 System Prompts Management** — Unified dashboard managing 10 customizable prompt slots (`prompt_index` 1 to 10).
 - **10 AI Model Slots** — Unified dashboard managing 10 configurable AI model slots (`ai_index` 1 to 10).
-- **Landscape E-Ink Base64 PNG Pagination Engine** — Converts AI answers (Markdown + KaTeX LaTeX math formulas) into 250x122px landscape high-contrast monochrome Base64 PNG pages without clipping lines.
+- **Universal KaTeX & Markdown E-Ink Engine** — Converts AI answers (Markdown + KaTeX LaTeX math formulas) into 250x122px landscape high-contrast monochrome Base64 PNG pages without clipping lines.
 - **Hardware Slot Auto-Discovery** — `/api/settings` provides full command and model slot mappings for hardware displays.
 - **3 Knowledge Base Contexts** — Supports multiple `.txt` and `.pdf` document uploads per slot, extracting and appending context with strict XML context wrapping (`<knowledge_base>` and `<user_input>`).
 - **Vercel Global Config Integration** — Blazing fast global storage for configurations and active AI settings.
