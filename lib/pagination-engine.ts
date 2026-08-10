@@ -16,18 +16,18 @@ const PADDING = 6;       // Border Padding
 const MAX_Y = PAGE_HEIGHT - PADDING; // 116px Usable Height
 const START_Y = 20;      // Leave top space for header badge [1/N]
 
-// Register Noto Sans Thai TTF font buffer with node-canvas
+// Register Universal Sarabun TTF font covering Thai, English, Numbers & Math symbols
 let isFontRegistered = false;
 function ensureFontRegistered() {
   if (isFontRegistered) return;
   try {
-    const fontPath = path.join(process.cwd(), 'public', 'fonts', 'NotoSansThai-Regular.ttf');
+    const fontPath = path.join(process.cwd(), 'public', 'fonts', 'Sarabun-Regular.ttf');
     if (fs.existsSync(fontPath)) {
-      registerFont(fontPath, { family: 'Noto Sans Thai' });
+      registerFont(fontPath, { family: 'Sarabun' });
       isFontRegistered = true;
     }
   } catch (err) {
-    console.error("Failed to register Thai font:", err);
+    console.error("Failed to register Sarabun font:", err);
   }
 }
 
@@ -94,8 +94,8 @@ function wrapTextToLines(ctx: any, text: string, fontStr: string, maxPixelWidth 
 }
 
 /**
- * Universal Large-Font Thai/English/Math E-Ink Engine (LANDSCAPE 250x122px)
- * Base font size increased to 14px - 16px with multi-language font stack for optimal readability.
+ * Universal Large-Font Universal Multi-Language E-Ink Engine (LANDSCAPE 250x122px)
+ * Uses Sarabun TTF font covering Thai, English, Numbers & Math symbols with 16px - 18px font sizes.
  */
 export function renderEInkPages(rawText: string): RenderedPagePayload {
   ensureFontRegistered();
@@ -108,11 +108,11 @@ export function renderEInkPages(rawText: string): RenderedPagePayload {
   const dummyCanvas = createCanvas(PAGE_WIDTH, PAGE_HEIGHT);
   const dCtx = dummyCanvas.getContext('2d');
 
-  // Multi-language font stack: Noto Sans Thai + Segoe UI / Arial fallbacks
-  const bodyFont = '14px "Noto Sans Thai", "Segoe UI", Arial, sans-serif';
-  const header1Font = 'bold 16px "Noto Sans Thai", "Segoe UI", Arial, sans-serif';
-  const header2Font = 'bold 15px "Noto Sans Thai", "Segoe UI", Arial, sans-serif';
-  const mathFont = 'bold 14px "Noto Sans Thai", "Segoe UI", Arial, sans-serif';
+  // Universal font stack covering Thai, English, Numbers & Math symbols
+  const bodyFont = '16px "Sarabun", "Segoe UI", Arial, sans-serif';
+  const header1Font = 'bold 18px "Sarabun", "Segoe UI", Arial, sans-serif';
+  const header2Font = 'bold 17px "Sarabun", "Segoe UI", Arial, sans-serif';
+  const mathFont = 'bold 16px "Sarabun", "Segoe UI", Arial, sans-serif';
 
   const elements: RenderElement[] = [];
 
@@ -128,21 +128,21 @@ export function renderEInkPages(rawText: string): RenderedPagePayload {
       const formattedMath = formatLatexToReadableMath(mathCode);
       const wrapped = wrapTextToLines(dCtx, '[MATH] ' + formattedMath, mathFont, 235);
       for (const wLine of wrapped) {
-        elements.push({ type: 'math', content: wLine, height: 18, font: mathFont });
+        elements.push({ type: 'math', content: wLine, height: 20, font: mathFont });
       }
     } else if (part.startsWith('\\[') && part.endsWith('\\]')) {
       const mathCode = part.slice(2, -2).trim();
       const formattedMath = formatLatexToReadableMath(mathCode);
       const wrapped = wrapTextToLines(dCtx, '[MATH] ' + formattedMath, mathFont, 235);
       for (const wLine of wrapped) {
-        elements.push({ type: 'math', content: wLine, height: 18, font: mathFont });
+        elements.push({ type: 'math', content: wLine, height: 20, font: mathFont });
       }
     } else if ((part.startsWith('$') && part.endsWith('$')) || (part.startsWith('\\(') && part.endsWith('\\)'))) {
       const mathCode = part.startsWith('$') ? part.slice(1, -1).trim() : part.slice(2, -2).trim();
       const formattedMath = formatLatexToReadableMath(mathCode);
       const wrapped = wrapTextToLines(dCtx, formattedMath, bodyFont, 235);
       for (const wLine of wrapped) {
-        elements.push({ type: 'math', content: wLine, height: 17, font: bodyFont });
+        elements.push({ type: 'math', content: wLine, height: 19, font: bodyFont });
       }
     } else {
       // Standard Markdown / Plain text lines
@@ -154,22 +154,22 @@ export function renderEInkPages(rawText: string): RenderedPagePayload {
         if (trimmed.startsWith('# ')) {
           const wrapped = wrapTextToLines(dCtx, trimmed.replace(/^#\s+/, ''), header1Font, 235);
           for (const wLine of wrapped) {
-            elements.push({ type: 'header', content: wLine, height: 20, font: header1Font });
+            elements.push({ type: 'header', content: wLine, height: 22, font: header1Font });
           }
         } else if (trimmed.startsWith('## ') || trimmed.startsWith('### ')) {
           const wrapped = wrapTextToLines(dCtx, trimmed.replace(/^#{2,3}\s+/, ''), header2Font, 235);
           for (const wLine of wrapped) {
-            elements.push({ type: 'header', content: wLine, height: 19, font: header2Font });
+            elements.push({ type: 'header', content: wLine, height: 21, font: header2Font });
           }
         } else if (trimmed.startsWith('- ') || trimmed.startsWith('* ') || trimmed.startsWith('• ')) {
           const wrapped = wrapTextToLines(dCtx, '• ' + trimmed.replace(/^[-*•]\s+/, ''), bodyFont, 235);
           for (const wLine of wrapped) {
-            elements.push({ type: 'bullet', content: wLine, height: 17, font: bodyFont });
+            elements.push({ type: 'bullet', content: wLine, height: 19, font: bodyFont });
           }
         } else {
           const wrapped = wrapTextToLines(dCtx, trimmed, bodyFont, 235);
           for (const wLine of wrapped) {
-            elements.push({ type: 'text', content: wLine, height: 17, font: bodyFont });
+            elements.push({ type: 'text', content: wLine, height: 19, font: bodyFont });
           }
         }
       }
@@ -198,7 +198,7 @@ export function renderEInkPages(rawText: string): RenderedPagePayload {
   const totalPages = pageElementsList.length || 1;
   const pagesBase64: string[] = [];
 
-  // Render each landscape page using node-canvas with registered Thai/English multi-language font stack
+  // Render each landscape page using node-canvas with registered universal Sarabun TTF font
   for (let pIdx = 0; pIdx < totalPages; pIdx++) {
     const canvas = createCanvas(PAGE_WIDTH, PAGE_HEIGHT);
     const ctx = canvas.getContext('2d');
@@ -218,7 +218,7 @@ export function renderEInkPages(rawText: string): RenderedPagePayload {
     ctx.lineWidth = 1;
     ctx.stroke();
 
-    ctx.font = 'bold 11px "Noto Sans Thai", "Segoe UI", Arial, sans-serif';
+    ctx.font = 'bold 12px "Sarabun", "Segoe UI", Arial, sans-serif';
     ctx.textAlign = 'right';
     ctx.fillText(`[${pIdx + 1}/${totalPages}]`, PAGE_WIDTH - PADDING, 11);
     ctx.textAlign = 'left';
@@ -229,14 +229,14 @@ export function renderEInkPages(rawText: string): RenderedPagePayload {
     for (const elem of pElements) {
       ctx.font = elem.font;
       if (elem.type === 'header') {
-        ctx.fillText(elem.content, PADDING, yPos + 12);
+        ctx.fillText(elem.content, PADDING, yPos + 14);
         ctx.beginPath();
-        ctx.moveTo(PADDING, yPos + 15);
-        ctx.lineTo(PADDING + ctx.measureText(elem.content).width, yPos + 15);
+        ctx.moveTo(PADDING, yPos + 17);
+        ctx.lineTo(PADDING + ctx.measureText(elem.content).width, yPos + 17);
         ctx.lineWidth = 1;
         ctx.stroke();
       } else {
-        ctx.fillText(elem.content, PADDING, yPos + 11);
+        ctx.fillText(elem.content, PADDING, yPos + 13);
       }
       yPos += elem.height + 2;
     }
@@ -283,10 +283,10 @@ function createEmptyPagePayload(message: string): RenderedPagePayload {
 
   ctx.fillStyle = '#000000';
   ctx.strokeStyle = '#000000';
-  ctx.font = '14px "Noto Sans Thai", "Segoe UI", Arial, sans-serif';
-  ctx.fillText(message, PADDING, START_Y + 12);
+  ctx.font = '16px "Sarabun", "Segoe UI", Arial, sans-serif';
+  ctx.fillText(message, PADDING, START_Y + 14);
 
-  ctx.font = 'bold 11px "Noto Sans Thai", "Segoe UI", Arial, sans-serif';
+  ctx.font = 'bold 12px "Sarabun", "Segoe UI", Arial, sans-serif';
   ctx.textAlign = 'right';
   ctx.fillText('[1/1]', PAGE_WIDTH - PADDING, 11);
 
