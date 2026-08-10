@@ -15,6 +15,7 @@
     "@sparticuz/chromium": "^133.0.0",
     "@vercel/edge-config": "^1.4.0",
     "@vercel/global-config": "^1.5.1",
+    "canvas": "^3.2.3",
     "dotenv": "^17.4.2",
     "katex": "^0.16.21",
     "marked": "^15.0.7",

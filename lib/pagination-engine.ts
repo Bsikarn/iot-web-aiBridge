@@ -1,3 +1,6 @@
+import fs from 'fs';
+import path from 'path';
+import { createCanvas, registerFont } from 'canvas';
 import { PNG } from 'pngjs';
 
 export interface RenderedPagePayload {
@@ -13,190 +16,22 @@ const PADDING = 5;       // Border Padding
 const MAX_Y = PAGE_HEIGHT - PADDING; // 117px Usable Height
 const START_Y = 16;      // Leave top space for header badge [1/N]
 
-// 5x7 Bitmap Font Data for ASCII, Thai & Math Symbols (100% Pure JS, No External Font Files Needed)
-const BITMAP_FONT: Record<string, number[]> = {
-  ' ': [0x00, 0x00, 0x00, 0x00, 0x00],
-  '!': [0x00, 0x00, 0x5f, 0x00, 0x00],
-  '"': [0x00, 0x07, 0x00, 0x07, 0x00],
-  '#': [0x14, 0x7f, 0x14, 0x7f, 0x14],
-  '$': [0x24, 0x2a, 0x7f, 0x2a, 0x12],
-  '%': [0x23, 0x13, 0x08, 0x64, 0x62],
-  '&': [0x36, 0x49, 0x55, 0x22, 0x50],
-  "'": [0x00, 0x05, 0x03, 0x00, 0x00],
-  '(': [0x00, 0x1c, 0x22, 0x41, 0x00],
-  ')': [0x00, 0x41, 0x22, 0x1c, 0x00],
-  '*': [0x14, 0x08, 0x3e, 0x08, 0x14],
-  '+': [0x08, 0x08, 0x3e, 0x08, 0x08],
-  ',': [0x00, 0x50, 0x30, 0x00, 0x00],
-  '-': [0x08, 0x08, 0x08, 0x08, 0x08],
-  '.': [0x00, 0x60, 0x60, 0x00, 0x00],
-  '/': [0x20, 0x10, 0x08, 0x04, 0x02],
-  '0': [0x3e, 0x51, 0x49, 0x45, 0x3e],
-  '1': [0x00, 0x42, 0x7f, 0x40, 0x00],
-  '2': [0x42, 0x61, 0x51, 0x49, 0x46],
-  '3': [0x21, 0x41, 0x45, 0x4b, 0x31],
-  '4': [0x18, 0x14, 0x12, 0x7f, 0x10],
-  '5': [0x27, 0x45, 0x45, 0x45, 0x39],
-  '6': [0x3c, 0x4a, 0x49, 0x49, 0x30],
-  '7': [0x01, 0x71, 0x09, 0x05, 0x03],
-  '8': [0x36, 0x49, 0x49, 0x49, 0x36],
-  '9': [0x06, 0x49, 0x49, 0x29, 0x1e],
-  ':': [0x00, 0x36, 0x36, 0x00, 0x00],
-  ';': [0x00, 0x56, 0x36, 0x00, 0x00],
-  '<': [0x08, 0x14, 0x22, 0x41, 0x00],
-  '=': [0x14, 0x14, 0x14, 0x14, 0x14],
-  '>': [0x00, 0x41, 0x22, 0x14, 0x08],
-  '?': [0x02, 0x01, 0x51, 0x09, 0x06],
-  '@': [0x32, 0x49, 0x79, 0x41, 0x3e],
-  'A': [0x7e, 0x11, 0x11, 0x11, 0x7e],
-  'B': [0x7f, 0x49, 0x49, 0x49, 0x36],
-  'C': [0x3e, 0x41, 0x41, 0x41, 0x22],
-  'D': [0x7f, 0x41, 0x41, 0x22, 0x1c],
-  'E': [0x7f, 0x49, 0x49, 0x49, 0x41],
-  'F': [0x7f, 0x09, 0x09, 0x09, 0x01],
-  'G': [0x3e, 0x41, 0x49, 0x49, 0x7a],
-  'H': [0x7f, 0x08, 0x08, 0x08, 0x7f],
-  'I': [0x00, 0x41, 0x7f, 0x41, 0x00],
-  'J': [0x20, 0x40, 0x41, 0x3f, 0x01],
-  'K': [0x7f, 0x08, 0x14, 0x22, 0x41],
-  'L': [0x7f, 0x40, 0x40, 0x40, 0x40],
-  'M': [0x7f, 0x02, 0x0c, 0x02, 0x7f],
-  'N': [0x7f, 0x04, 0x08, 0x10, 0x7f],
-  'O': [0x3e, 0x41, 0x41, 0x41, 0x3e],
-  'P': [0x7f, 0x09, 0x09, 0x09, 0x06],
-  'Q': [0x3e, 0x41, 0x51, 0x21, 0x5e],
-  'R': [0x7f, 0x09, 0x19, 0x29, 0x46],
-  'S': [0x46, 0x49, 0x49, 0x49, 0x31],
-  'T': [0x01, 0x01, 0x7f, 0x01, 0x01],
-  'U': [0x3f, 0x40, 0x40, 0x40, 0x3f],
-  'V': [0x1f, 0x20, 0x40, 0x20, 0x1f],
-  'W': [0x7f, 0x20, 0x18, 0x20, 0x7f],
-  'X': [0x63, 0x14, 0x08, 0x14, 0x63],
-  'Y': [0x07, 0x08, 0x70, 0x08, 0x07],
-  'Z': [0x61, 0x51, 0x49, 0x45, 0x43],
-  '[': [0x00, 0x7f, 0x41, 0x41, 0x00],
-  '\\': [0x02, 0x04, 0x08, 0x10, 0x20],
-  ']': [0x00, 0x41, 0x41, 0x7f, 0x00],
-  '^': [0x04, 0x02, 0x01, 0x02, 0x04],
-  '_': [0x40, 0x40, 0x40, 0x40, 0x40],
-  '`': [0x00, 0x01, 0x02, 0x04, 0x00],
-  'a': [0x20, 0x54, 0x54, 0x54, 0x78],
-  'b': [0x7f, 0x48, 0x44, 0x44, 0x38],
-  'c': [0x38, 0x44, 0x44, 0x44, 0x20],
-  'd': [0x38, 0x44, 0x44, 0x48, 0x7f],
-  'e': [0x38, 0x54, 0x54, 0x54, 0x18],
-  'f': [0x08, 0x7e, 0x09, 0x01, 0x02],
-  'g': [0x0c, 0x52, 0x52, 0x52, 0x3e],
-  'h': [0x7f, 0x08, 0x04, 0x04, 0x78],
-  'i': [0x00, 0x44, 0x7d, 0x40, 0x00],
-  'j': [0x20, 0x40, 0x44, 0x3d, 0x00],
-  'k': [0x7f, 0x10, 0x28, 0x44, 0x00],
-  'l': [0x00, 0x41, 0x7f, 0x40, 0x00],
-  'm': [0x7c, 0x04, 0x18, 0x04, 0x78],
-  'n': [0x7c, 0x08, 0x04, 0x04, 0x78],
-  'o': [0x38, 0x44, 0x44, 0x44, 0x38],
-  'p': [0x7c, 0x14, 0x14, 0x14, 0x08],
-  'q': [0x08, 0x14, 0x14, 0x18, 0x7c],
-  'r': [0x7c, 0x08, 0x04, 0x04, 0x08],
-  's': [0x48, 0x54, 0x54, 0x54, 0x24],
-  't': [0x04, 0x3e, 0x44, 0x24, 0x08],
-  'u': [0x3c, 0x40, 0x40, 0x20, 0x7c],
-  'v': [0x1c, 0x20, 0x40, 0x20, 0x1c],
-  'w': [0x3c, 0x40, 0x30, 0x40, 0x3c],
-  'x': [0x44, 0x28, 0x10, 0x28, 0x44],
-  'y': [0x0c, 0x50, 0x50, 0x50, 0x3c],
-  'z': [0x44, 0x64, 0x54, 0x4c, 0x44],
-  '{': [0x00, 0x08, 0x36, 0x41, 0x00],
-  '|': [0x00, 0x00, 0x7f, 0x00, 0x00],
-  '}': [0x00, 0x41, 0x36, 0x08, 0x00],
-  '~': [0x02, 0x01, 0x02, 0x04, 0x02],
-  '•': [0x00, 0x1c, 0x1c, 0x1c, 0x00],
-  '√': [0x18, 0x20, 0x40, 0x3f, 0x01],
-  '±': [0x08, 0x3e, 0x08, 0x14, 0x14],
-  '≠': [0x14, 0x3e, 0x14, 0x22, 0x14],
-  '≤': [0x08, 0x14, 0x22, 0x55, 0x55],
-  '≥': [0x55, 0x55, 0x22, 0x14, 0x08],
-  '∞': [0x24, 0x5a, 0x24, 0x5a, 0x24],
-  'π': [0x02, 0x7f, 0x02, 0x7f, 0x02],
-  'θ': [0x3e, 0x41, 0x5d, 0x41, 0x3e],
-  'α': [0x24, 0x49, 0x49, 0x36, 0x00],
-  'β': [0x7f, 0x49, 0x49, 0x36, 0x14],
-  '∑': [0x41, 0x63, 0x55, 0x49, 0x41],
-  '∫': [0x20, 0x41, 0x7f, 0x41, 0x02],
-  '→': [0x08, 0x08, 0x2a, 0x1c, 0x08]
-};
-
-// Canvas Page Wrapper around pure JS pngjs PNG buffer (250x122 Landscape)
-class PageCanvas {
-  public png: PNG;
-
-  constructor() {
-    this.png = new PNG({ width: PAGE_WIDTH, height: PAGE_HEIGHT });
-    // Fill 100% solid white background (255, 255, 255, 255)
-    for (let i = 0; i < this.png.data.length; i += 4) {
-      this.png.data[i] = 255;
-      this.png.data[i + 1] = 255;
-      this.png.data[i + 2] = 255;
-      this.png.data[i + 3] = 255;
+// Register Noto Sans Thai TTF font buffer with node-canvas
+let isFontRegistered = false;
+function ensureFontRegistered() {
+  if (isFontRegistered) return;
+  try {
+    const fontPath = path.join(process.cwd(), 'public', 'fonts', 'NotoSansThai-Regular.ttf');
+    if (fs.existsSync(fontPath)) {
+      registerFont(fontPath, { family: 'Noto Sans Thai' });
+      isFontRegistered = true;
     }
-  }
-
-  setPixel(x: number, y: number, isBlack = true) {
-    if (x < 0 || x >= PAGE_WIDTH || y < 0 || y >= PAGE_HEIGHT) return;
-    const idx = (PAGE_WIDTH * Math.floor(y) + Math.floor(x)) << 2;
-    const val = isBlack ? 0 : 255;
-    this.png.data[idx] = val;
-    this.png.data[idx + 1] = val;
-    this.png.data[idx + 2] = val;
-    this.png.data[idx + 3] = 255;
-  }
-
-  drawHorizontalLine(x1: number, x2: number, y: number) {
-    const minX = Math.max(0, Math.min(x1, x2));
-    const maxX = Math.min(PAGE_WIDTH - 1, Math.max(x1, x2));
-    for (let x = minX; x <= maxX; x++) {
-      this.setPixel(x, y);
-    }
-  }
-
-  drawChar(char: string, x: number, y: number): number {
-    const fontData = BITMAP_FONT[char] || BITMAP_FONT['?'] || BITMAP_FONT[' '];
-    if (!fontData) return 6;
-    for (let col = 0; col < 5; col++) {
-      const bits = fontData[col] || 0;
-      for (let row = 0; row < 7; row++) {
-        if ((bits >> row) & 1) {
-          this.setPixel(x + col, y + row);
-        }
-      }
-    }
-    return 6;
-  }
-
-  drawString(str: string, x: number, y: number): number {
-    let currentX = x;
-    for (let i = 0; i < str.length; i++) {
-      const ch = str[i];
-      currentX += this.drawChar(ch, currentX, y);
-    }
-    return currentX - x;
-  }
-
-  drawHeaderBadge(pageNum: number, totalPages: number) {
-    const badgeStr = `[${pageNum}/${totalPages}]`;
-    const badgeWidth = badgeStr.length * 6;
-    const startX = PAGE_WIDTH - PADDING - badgeWidth;
-    this.drawString(badgeStr, startX, 4);
-    this.drawHorizontalLine(PADDING, PAGE_WIDTH - PADDING, 12);
-  }
-
-  toBase64Png(): string {
-    const buffer = PNG.sync.write(this.png);
-    return `data:image/png;base64,${buffer.toString('base64')}`;
+  } catch (err) {
+    console.error("Failed to register Thai font:", err);
   }
 }
 
-// Convert LaTeX math equations into clean human-readable math symbol representations
+// Format LaTeX math expressions into human-readable math symbols
 function formatLatexToReadableMath(rawLatex: string): string {
   try {
     let text = rawLatex
@@ -235,27 +70,20 @@ interface RenderElement {
   height: number;
 }
 
-// Wrap text string into lines that fit within 240px width (~38-40 chars max per line)
-function wrapTextToLines(text: string, maxCharsPerLine = 38): string[] {
+// Wrap text string into lines that fit within 240px width using canvas font metrics
+function wrapTextToLines(ctx: any, text: string, maxPixelWidth = 240): string[] {
   const words = text.split(' ');
   const lines: string[] = [];
   let currentLine = '';
 
   for (const word of words) {
-    if ((currentLine + (currentLine ? ' ' : '') + word).length <= maxCharsPerLine) {
-      currentLine += (currentLine ? ' ' : '') + word;
+    const testLine = currentLine ? `${currentLine} ${word}` : word;
+    const metrics = ctx.measureText(testLine);
+    if (metrics.width <= maxPixelWidth) {
+      currentLine = testLine;
     } else {
       if (currentLine) lines.push(currentLine);
-      if (word.length > maxCharsPerLine) {
-        let remaining = word;
-        while (remaining.length > maxCharsPerLine) {
-          lines.push(remaining.slice(0, maxCharsPerLine));
-          remaining = remaining.slice(maxCharsPerLine);
-        }
-        currentLine = remaining;
-      } else {
-        currentLine = word;
-      }
+      currentLine = word;
     }
   }
 
@@ -264,14 +92,20 @@ function wrapTextToLines(text: string, maxCharsPerLine = 38): string[] {
 }
 
 /**
- * Universal 100% Pure JS E-Ink Canvas Engine (LANDSCAPE 250x122px)
- * Converts AI answers (Markdown + LaTeX Math) into 250x122 Base64 PNG images.
- * Guaranteed 100% reliable on Vercel Serverless Functions (Zero resvg / Zero WASM / Zero font file dependencies).
+ * Node Canvas Thai Font & Formatted Math E-Ink Engine (LANDSCAPE 250x122px)
+ * Converts AI answers (Thai/English Markdown + LaTeX Math) into 250x122 Base64 PNG images.
  */
 export function renderEInkPages(rawText: string): RenderedPagePayload {
+  ensureFontRegistered();
+
   if (!rawText || rawText.trim() === '') {
     return createEmptyPagePayload("No answer");
   }
+
+  // Create temporary canvas for text measurement
+  const dummyCanvas = createCanvas(PAGE_WIDTH, PAGE_HEIGHT);
+  const dCtx = dummyCanvas.getContext('2d');
+  dCtx.font = '10px "Noto Sans Thai", sans-serif';
 
   const elements: RenderElement[] = [];
 
@@ -285,23 +119,23 @@ export function renderEInkPages(rawText: string): RenderedPagePayload {
     if (part.startsWith('$$') && part.endsWith('$$')) {
       const mathCode = part.slice(2, -2).trim();
       const formattedMath = formatLatexToReadableMath(mathCode);
-      const wrapped = wrapTextToLines('[MATH] ' + formattedMath, 36);
+      const wrapped = wrapTextToLines(dCtx, '[MATH] ' + formattedMath, 235);
       for (const wLine of wrapped) {
-        elements.push({ type: 'math', content: wLine, height: 11 });
+        elements.push({ type: 'math', content: wLine, height: 12 });
       }
     } else if (part.startsWith('\\[') && part.endsWith('\\]')) {
       const mathCode = part.slice(2, -2).trim();
       const formattedMath = formatLatexToReadableMath(mathCode);
-      const wrapped = wrapTextToLines('[MATH] ' + formattedMath, 36);
+      const wrapped = wrapTextToLines(dCtx, '[MATH] ' + formattedMath, 235);
       for (const wLine of wrapped) {
-        elements.push({ type: 'math', content: wLine, height: 11 });
+        elements.push({ type: 'math', content: wLine, height: 12 });
       }
     } else if ((part.startsWith('$') && part.endsWith('$')) || (part.startsWith('\\(') && part.endsWith('\\)'))) {
       const mathCode = part.startsWith('$') ? part.slice(1, -1).trim() : part.slice(2, -2).trim();
       const formattedMath = formatLatexToReadableMath(mathCode);
-      const wrapped = wrapTextToLines(formattedMath, 38);
+      const wrapped = wrapTextToLines(dCtx, formattedMath, 235);
       for (const wLine of wrapped) {
-        elements.push({ type: 'math', content: wLine, height: 10 });
+        elements.push({ type: 'math', content: wLine, height: 11 });
       }
     } else {
       // Standard Markdown / Plain text lines
@@ -311,24 +145,28 @@ export function renderEInkPages(rawText: string): RenderedPagePayload {
         if (!trimmed) continue;
 
         if (trimmed.startsWith('# ')) {
-          const wrapped = wrapTextToLines(trimmed.replace(/^#\s+/, ''), 32);
+          dCtx.font = 'bold 12px "Noto Sans Thai", sans-serif';
+          const wrapped = wrapTextToLines(dCtx, trimmed.replace(/^#\s+/, ''), 235);
           for (const wLine of wrapped) {
-            elements.push({ type: 'header', content: wLine, height: 12 });
+            elements.push({ type: 'header', content: wLine, height: 14 });
           }
+          dCtx.font = '10px "Noto Sans Thai", sans-serif';
         } else if (trimmed.startsWith('## ') || trimmed.startsWith('### ')) {
-          const wrapped = wrapTextToLines(trimmed.replace(/^#{2,3}\s+/, ''), 34);
+          dCtx.font = 'bold 11px "Noto Sans Thai", sans-serif';
+          const wrapped = wrapTextToLines(dCtx, trimmed.replace(/^#{2,3}\s+/, ''), 235);
           for (const wLine of wrapped) {
-            elements.push({ type: 'header', content: wLine, height: 11 });
+            elements.push({ type: 'header', content: wLine, height: 13 });
           }
+          dCtx.font = '10px "Noto Sans Thai", sans-serif';
         } else if (trimmed.startsWith('- ') || trimmed.startsWith('* ') || trimmed.startsWith('• ')) {
-          const wrapped = wrapTextToLines('• ' + trimmed.replace(/^[-*•]\s+/, ''), 38);
+          const wrapped = wrapTextToLines(dCtx, '• ' + trimmed.replace(/^[-*•]\s+/, ''), 235);
           for (const wLine of wrapped) {
-            elements.push({ type: 'bullet', content: wLine, height: 10 });
+            elements.push({ type: 'bullet', content: wLine, height: 11 });
           }
         } else {
-          const wrapped = wrapTextToLines(trimmed, 38);
+          const wrapped = wrapTextToLines(dCtx, trimmed, 235);
           for (const wLine of wrapped) {
-            elements.push({ type: 'text', content: wLine, height: 10 });
+            elements.push({ type: 'text', content: wLine, height: 11 });
           }
         }
       }
@@ -357,24 +195,73 @@ export function renderEInkPages(rawText: string): RenderedPagePayload {
   const totalPages = pageElementsList.length || 1;
   const pagesBase64: string[] = [];
 
-  // Render each landscape page to 250x122 1-bit high contrast PNG using pure 2D Canvas
+  // Render each landscape page using node-canvas with registered Thai TTF font
   for (let pIdx = 0; pIdx < totalPages; pIdx++) {
-    const pageCanvas = new PageCanvas();
+    const canvas = createCanvas(PAGE_WIDTH, PAGE_HEIGHT);
+    const ctx = canvas.getContext('2d');
+
+    // Solid white background #ffffff
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, PAGE_WIDTH, PAGE_HEIGHT);
+
+    // Default black stroke and fill
+    ctx.fillStyle = '#000000';
+    ctx.strokeStyle = '#000000';
+
+    // Header divider line and badge [1/N]
+    ctx.beginPath();
+    ctx.moveTo(PADDING, 12);
+    ctx.lineTo(PAGE_WIDTH - PADDING, 12);
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    ctx.font = 'bold 9px "Noto Sans Thai", sans-serif';
+    ctx.textAlign = 'right';
+    ctx.fillText(`[${pIdx + 1}/${totalPages}]`, PAGE_WIDTH - PADDING, 10);
+    ctx.textAlign = 'left';
+
     const pElements = pageElementsList[pIdx] || [];
     let yPos = START_Y;
 
     for (const elem of pElements) {
       if (elem.type === 'header') {
-        pageCanvas.drawString(elem.content, PADDING, yPos);
-        pageCanvas.drawHorizontalLine(PADDING, PADDING + elem.content.length * 6, yPos + 9);
+        ctx.font = 'bold 11px "Noto Sans Thai", sans-serif';
+        ctx.fillText(elem.content, PADDING, yPos + 9);
+        ctx.beginPath();
+        ctx.moveTo(PADDING, yPos + 11);
+        ctx.lineTo(PADDING + ctx.measureText(elem.content).width, yPos + 11);
+        ctx.lineWidth = 1;
+        ctx.stroke();
       } else {
-        pageCanvas.drawString(elem.content, PADDING, yPos);
+        ctx.font = '10px "Noto Sans Thai", sans-serif';
+        ctx.fillText(elem.content, PADDING, yPos + 8);
       }
       yPos += elem.height + 1;
     }
 
-    pageCanvas.drawHeaderBadge(pIdx + 1, totalPages);
-    pagesBase64.push(pageCanvas.toBase64Png());
+    // Convert Canvas to PNG Buffer and apply 1-bit monochrome binarization
+    const canvasBuffer = canvas.toBuffer('image/png');
+    const png = PNG.sync.read(canvasBuffer);
+
+    for (let i = 0; i < png.data.length; i += 4) {
+      const alpha = png.data[i + 3];
+      if (alpha === 0) {
+        png.data[i] = 255;
+        png.data[i + 1] = 255;
+        png.data[i + 2] = 255;
+        png.data[i + 3] = 255;
+      } else {
+        const avg = (png.data[i] + png.data[i + 1] + png.data[i + 2]) / 3;
+        const val = avg <= 200 ? 0 : 255;
+        png.data[i] = val;
+        png.data[i + 1] = val;
+        png.data[i + 2] = val;
+        png.data[i + 3] = 255;
+      }
+    }
+
+    const binarizedBuffer = PNG.sync.write(png);
+    pagesBase64.push(`data:image/png;base64,${binarizedBuffer.toString('base64')}`);
   }
 
   return {
@@ -385,12 +272,46 @@ export function renderEInkPages(rawText: string): RenderedPagePayload {
 }
 
 function createEmptyPagePayload(message: string): RenderedPagePayload {
-  const pageCanvas = new PageCanvas();
-  pageCanvas.drawString(message, PADDING, START_Y);
-  pageCanvas.drawHeaderBadge(1, 1);
+  ensureFontRegistered();
+  const canvas = createCanvas(PAGE_WIDTH, PAGE_HEIGHT);
+  const ctx = canvas.getContext('2d');
+
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, PAGE_WIDTH, PAGE_HEIGHT);
+
+  ctx.fillStyle = '#000000';
+  ctx.strokeStyle = '#000000';
+  ctx.font = '10px "Noto Sans Thai", sans-serif';
+  ctx.fillText(message, PADDING, START_Y + 8);
+
+  ctx.font = 'bold 9px "Noto Sans Thai", sans-serif';
+  ctx.textAlign = 'right';
+  ctx.fillText('[1/1]', PAGE_WIDTH - PADDING, 10);
+
+  const canvasBuffer = canvas.toBuffer('image/png');
+  const png = PNG.sync.read(canvasBuffer);
+
+  for (let i = 0; i < png.data.length; i += 4) {
+    const alpha = png.data[i + 3];
+    if (alpha === 0) {
+      png.data[i] = 255;
+      png.data[i + 1] = 255;
+      png.data[i + 2] = 255;
+      png.data[i + 3] = 255;
+    } else {
+      const avg = (png.data[i] + png.data[i + 1] + png.data[i + 2]) / 3;
+      const val = avg <= 200 ? 0 : 255;
+      png.data[i] = val;
+      png.data[i + 1] = val;
+      png.data[i + 2] = val;
+      png.data[i + 3] = 255;
+    }
+  }
+
+  const binarizedBuffer = PNG.sync.write(png);
   return {
     success: true,
     total_pages: 1,
-    pages: [pageCanvas.toBase64Png()]
+    pages: [`data:image/png;base64,${binarizedBuffer.toString('base64')}`]
   };
 }

@@ -5,7 +5,7 @@ const nextConfig = {
         ignoreBuildErrors: true,
     },
     // Specify server external packages for native Node modules
-    serverExternalPackages: ['pdf2json'],
+    serverExternalPackages: ['canvas', 'pdf2json'],
 };
 
 export default nextConfig;
