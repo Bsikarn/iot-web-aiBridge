@@ -1,5 +1,4 @@
 import { PNG } from 'pngjs';
-import katex from 'katex';
 
 export interface RenderedPagePayload {
   success: boolean;
@@ -7,12 +6,13 @@ export interface RenderedPagePayload {
   pages: string[];
 }
 
-const PAGE_WIDTH = 122;
-const PAGE_HEIGHT = 250;
-const PADDING = 5;
-const CONTENT_WIDTH = PAGE_WIDTH - PADDING * 2; // 112px
-const MAX_Y = PAGE_HEIGHT - PADDING; // 245px
-const START_Y = 16; // Leave top space for page badge [1/N]
+// Fixed Hardware Dimensions for Waveshare 2.13-inch E-Ink Display in LANDSCAPE mode
+const PAGE_WIDTH = 250;  // Landscape Width
+const PAGE_HEIGHT = 122; // Landscape Height
+const PADDING = 5;       // Border Padding on all sides
+const CONTENT_WIDTH = PAGE_WIDTH - PADDING * 2; // 240px Usable Width
+const MAX_Y = PAGE_HEIGHT - PADDING; // 117px Usable Height
+const START_Y = 16;      // Leave top space for header badge [1/N]
 
 // 5x7 Bitmap Font Data for ASCII and Math Symbols
 // Each 5x7 character is encoded as 5 column bytes (7 bits used per column)
@@ -127,7 +127,7 @@ const BITMAP_FONT: Record<string, number[]> = {
   '∫': [0x20, 0x41, 0x7f, 0x41, 0x02]
 };
 
-// Canvas Page Wrapper around pngjs PNG buffer
+// Canvas Page Wrapper around pngjs PNG buffer (250x122 Landscape)
 class PageCanvas {
   public png: PNG;
 
@@ -229,8 +229,8 @@ interface RenderBlock {
   height: number;
 }
 
-// Wrap text string into lines that fit within 112px width (18 chars max per line for 6px chars)
-function wrapTextToLines(text: string, maxCharsPerLine = 18): string[] {
+// Wrap text string into lines that fit within 240px width (~38-40 chars max per line for 6px chars)
+function wrapTextToLines(text: string, maxCharsPerLine = 38): string[] {
   const words = text.split(' ');
   const lines: string[] = [];
   let currentLine = '';
@@ -259,8 +259,8 @@ function wrapTextToLines(text: string, maxCharsPerLine = 18): string[] {
 }
 
 /**
- * Main E-Ink Page Pagination Engine
- * Converts Markdown + LaTeX text into 122x250 1-bit high-contrast Base64 PNG images.
+ * Main E-Ink Page Pagination Engine (LANDSCAPE MODE: 250x122 px)
+ * Converts Markdown + LaTeX text into 250x122 1-bit high-contrast Base64 PNG images.
  */
 export function renderEInkPages(rawText: string): RenderedPagePayload {
   if (!rawText || rawText.trim() === '') {
@@ -289,35 +289,35 @@ export function renderEInkPages(rawText: string): RenderedPagePayload {
     if (!trimmed) continue;
 
     if (trimmed.startsWith('# ')) {
-      const wrapped = wrapTextToLines(trimmed.replace(/^#\s+/, ''), 15);
+      const wrapped = wrapTextToLines(trimmed.replace(/^#\s+/, ''), 34);
       for (const wLine of wrapped) {
         blocks.push({ type: 'header', content: wLine, height: 12 });
       }
     } else if (trimmed.startsWith('## ') || trimmed.startsWith('### ')) {
-      const wrapped = wrapTextToLines(trimmed.replace(/^#{2,3}\s+/, ''), 16);
+      const wrapped = wrapTextToLines(trimmed.replace(/^#{2,3}\s+/, ''), 36);
       for (const wLine of wrapped) {
         blocks.push({ type: 'header', content: wLine, height: 11 });
       }
     } else if (trimmed.startsWith('- ') || trimmed.startsWith('* ') || trimmed.startsWith('• ')) {
-      const wrapped = wrapTextToLines('• ' + trimmed.replace(/^[-*•]\s+/, ''), 18);
+      const wrapped = wrapTextToLines('• ' + trimmed.replace(/^[-*•]\s+/, ''), 38);
       for (const wLine of wrapped) {
         blocks.push({ type: 'bullet', content: wLine, height: 10 });
       }
     } else if (trimmed.startsWith('[MATH:')) {
       const mathText = trimmed.replace(/^\[MATH:\s*/, '').replace(/\]$/, '');
-      const wrapped = wrapTextToLines(mathText, 17);
+      const wrapped = wrapTextToLines(mathText, 36);
       for (const wLine of wrapped) {
-        blocks.push({ type: 'math', content: wLine, height: 14 });
+        blocks.push({ type: 'math', content: wLine, height: 13 });
       }
     } else {
-      const wrapped = wrapTextToLines(trimmed, 18);
+      const wrapped = wrapTextToLines(trimmed, 38);
       for (const wLine of wrapped) {
         blocks.push({ type: 'text', content: wLine, height: 10 });
       }
     }
   }
 
-  // Paginate blocks into 250px pages without clipping lines in half
+  // Paginate blocks into 122px landscape pages without clipping lines in half
   const pageBlocksList: RenderBlock[][] = [];
   let currentPageBlocks: RenderBlock[] = [];
   let currentY = START_Y;
@@ -339,7 +339,7 @@ export function renderEInkPages(rawText: string): RenderedPagePayload {
   const totalPages = pageBlocksList.length || 1;
   const pagesBase64: string[] = [];
 
-  // Render each page to 122x250 1-bit high contrast PNG
+  // Render each landscape page to 250x122 1-bit high contrast PNG
   for (let pIdx = 0; pIdx < totalPages; pIdx++) {
     const pageCanvas = new PageCanvas();
     const pBlocks = pageBlocksList[pIdx] || [];
