@@ -65,7 +65,7 @@ function convertLatexToSvg(latexStr: string, isBlock = false): { svgInner: strin
     };
   } catch (err) {
     console.error("MathJax conversion error:", err);
-    return { svgInner: `<text fill="#000">${escapeXml(latexStr)}</text>`, width: 100, height: 12 };
+    return { svgInner: `<text fill="#000000">${escapeXml(latexStr)}</text>`, width: 100, height: 12 };
   }
 }
 
@@ -223,18 +223,18 @@ export function renderEInkPages(rawText: string): RenderedPagePayload {
         svgContent += `<text x="${PADDING}" y="${yPos + 9}" font-family="Arial, sans-serif" font-size="11" font-weight="bold" fill="#000000">${escapeXml(elem.content)}</text>`;
         svgContent += `<line x1="${PADDING}" y1="${yPos + 12}" x2="${PADDING + elem.content.length * 6}" y2="${yPos + 12}" stroke="#000000" stroke-width="1"/>`;
       } else if (elem.type === 'math' && elem.mathSvg) {
-        // Embed MathJax TeX SVG graphics at exact (x, y) offset
+        // Embed MathJax TeX SVG graphics with explicit solid black fill and stroke
         const scale = elem.mathSvg.height > 40 ? 0.75 : 0.9;
-        svgContent += `<g transform="translate(${PADDING}, ${yPos}) scale(${scale})">${elem.mathSvg.svgInner}</g>`;
+        svgContent += `<g transform="translate(${PADDING}, ${yPos}) scale(${scale})" color="#000000" fill="#000000" stroke="#000000">${elem.mathSvg.svgInner}</g>`;
       } else {
         svgContent += `<text x="${PADDING}" y="${yPos + 8}" font-family="Arial, sans-serif" font-size="9" fill="#000000">${escapeXml(elem.content)}</text>`;
       }
       yPos += elem.height + 2;
     }
 
-    // Build page composite SVG
+    // Build page composite SVG with explicit solid white root background rectangle
     const pageSvg = `<svg width="${PAGE_WIDTH}" height="${PAGE_HEIGHT}" viewBox="0 0 ${PAGE_WIDTH} ${PAGE_HEIGHT}" xmlns="http://www.w3.org/2000/svg">
-      <rect width="${PAGE_WIDTH}" height="${PAGE_HEIGHT}" fill="#ffffff"/>
+      <rect x="0" y="0" width="${PAGE_WIDTH}" height="${PAGE_HEIGHT}" fill="#ffffff" />
       <line x1="${PADDING}" y1="12" x2="${PAGE_WIDTH - PADDING}" y2="12" stroke="#000000" stroke-width="1"/>
       <text x="${PAGE_WIDTH - PADDING}" y="10" font-family="Arial, sans-serif" font-size="8" font-weight="bold" text-anchor="end" fill="#000000">[${pIdx + 1}/${totalPages}]</text>
       ${svgContent}
@@ -265,12 +265,21 @@ function rasterizeSvgToMonochromeBase64(svgString: string): string {
     // Binarize pixels to pure black (#000000) and pure white (#ffffff)
     const png = PNG.sync.read(pngBuffer);
     for (let i = 0; i < png.data.length; i += 4) {
-      const avg = (png.data[i] + png.data[i + 1] + png.data[i + 2]) / 3;
-      const val = avg <= 200 ? 0 : 255;
-      png.data[i] = val;
-      png.data[i + 1] = val;
-      png.data[i + 2] = val;
-      png.data[i + 3] = 255;
+      const alpha = png.data[i + 3];
+      if (alpha === 0) {
+        // Transparent pixels become solid white
+        png.data[i] = 255;
+        png.data[i + 1] = 255;
+        png.data[i + 2] = 255;
+        png.data[i + 3] = 255;
+      } else {
+        const avg = (png.data[i] + png.data[i + 1] + png.data[i + 2]) / 3;
+        const val = avg <= 200 ? 0 : 255;
+        png.data[i] = val;
+        png.data[i + 1] = val;
+        png.data[i + 2] = val;
+        png.data[i + 3] = 255;
+      }
     }
 
     const binarizedBuffer = PNG.sync.write(png);
@@ -283,7 +292,7 @@ function rasterizeSvgToMonochromeBase64(svgString: string): string {
 
 function createEmptyPagePayload(message: string): RenderedPagePayload {
   const svg = `<svg width="${PAGE_WIDTH}" height="${PAGE_HEIGHT}" viewBox="0 0 ${PAGE_WIDTH} ${PAGE_HEIGHT}" xmlns="http://www.w3.org/2000/svg">
-    <rect width="${PAGE_WIDTH}" height="${PAGE_HEIGHT}" fill="#ffffff"/>
+    <rect x="0" y="0" width="${PAGE_WIDTH}" height="${PAGE_HEIGHT}" fill="#ffffff" />
     <text x="10" y="30" font-family="Arial, sans-serif" font-size="10" fill="#000000">${escapeXml(message)}</text>
     <text x="240" y="10" font-family="Arial, sans-serif" font-size="8" text-anchor="end" fill="#000000">[1/1]</text>
   </svg>`;
