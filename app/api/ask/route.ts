@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import OpenAI from 'openai';
 import { getAISettings, updateAISettings, HistoryRecord, DEFAULT_AI_SETTING } from '@/lib/edge-config';
 import { uploadToDiscordWebhook } from '@/lib/discord';
+import { renderEInkPages } from '@/lib/pagination-engine';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -95,7 +96,7 @@ export async function POST(req: Request) {
     }
 
     // Enforce Structured Context Wrapping using XML tags and System Instructions
-    const systemInstruction = `System Directive: Analyze the attached image and answer the user query. You MUST strictly rely on the information provided inside <knowledge_base> tags to answer the question or solve the problem whenever applicable.`;
+    const systemInstruction = `System Directive: Analyze the attached image and answer the user query concisely. You MUST strictly rely on the information provided inside <knowledge_base> tags to answer the question or solve the problem whenever applicable. Format mathematical equations clearly using LaTeX delimiters ($...$ or $$...$$).`;
 
     const kbSection = activeKb.trim()
       ? `<knowledge_base>\n${activeKb.trim()}\n</knowledge_base>`
@@ -126,6 +127,9 @@ export async function POST(req: Request) {
 
     const aiReply = response.choices[0]?.message?.content || "AI did not return any response.";
 
+    // Render AI text answer to 122x250 Base64 PNG E-Ink pages using pagination engine
+    const einkResult = renderEInkPages(aiReply);
+
     // Record interaction in history (Max 3 records)
     const newRecord: HistoryRecord = {
       timestamp: new Date().toISOString(),
@@ -143,18 +147,22 @@ export async function POST(req: Request) {
       history: updatedHistory
     });
 
-    // Return JSON payload to IoT calculator including active_model
+    // Return JSON payload to IoT calculator including Base64 PNG E-Ink pages
     return NextResponse.json({
+      success: true,
       reply: aiReply,
       active_prompt: activePrompt,
       active_model: activeModel,
       active_kb: activeKb ? `KB #${kbNum} (${activeKb.length} chars)` : `KB #${kbNum} (Empty)`,
-      image_url: imageUrl
+      image_url: imageUrl,
+      total_pages: einkResult.total_pages,
+      pages: einkResult.pages
     }, { status: 200 });
 
   } catch (error: any) {
     console.error("API /api/ask Critical Error:", error);
     return NextResponse.json({
+      success: false,
       error: error.message || "An error occurred while processing the AI request"
     }, { status: 500 });
   }

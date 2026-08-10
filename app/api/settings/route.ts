@@ -7,7 +7,26 @@ export const revalidate = 0;
 export async function GET() {
   try {
     const settings = await getAISettings();
-    return NextResponse.json({ success: true, data: settings });
+    
+    // Construct full map of command slots for hardware board auto-discovery
+    const slots = Array.from({ length: 10 }, (_, i) => {
+      const promptText = settings.prompts?.[i] || "";
+      const modelName = settings.models?.[i] || DEFAULT_AI_SETTING.models[i] || "";
+      const customName = promptText ? promptText.slice(0, 20).trim() : `Slot #${i + 1}`;
+      
+      return {
+        index: i + 1,
+        name: customName,
+        prompt: promptText,
+        model: modelName
+      };
+    });
+
+    return NextResponse.json({
+      success: true,
+      data: settings,
+      slots: slots
+    });
   } catch (error: any) {
     console.error("GET /api/settings error:", error);
     return NextResponse.json({ error: error.message || "Failed to fetch settings" }, { status: 500 });
