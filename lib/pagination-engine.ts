@@ -12,9 +12,9 @@ export interface RenderedPagePayload {
 // Hardware Display Specifications (Waveshare 2.13-inch E-Ink Landscape)
 const PAGE_WIDTH = 250;  // Landscape Width
 const PAGE_HEIGHT = 122; // Landscape Height
-const PADDING = 5;       // Border Padding
-const MAX_Y = PAGE_HEIGHT - PADDING; // 117px Usable Height
-const START_Y = 16;      // Leave top space for header badge [1/N]
+const PADDING = 6;       // Border Padding
+const MAX_Y = PAGE_HEIGHT - PADDING; // 116px Usable Height
+const START_Y = 20;      // Leave top space for header badge [1/N]
 
 // Register Noto Sans Thai TTF font buffer with node-canvas
 let isFontRegistered = false;
@@ -68,10 +68,12 @@ interface RenderElement {
   type: 'text' | 'header' | 'bullet' | 'math';
   content: string;
   height: number;
+  font: string;
 }
 
-// Wrap text string into lines that fit within 240px width using canvas font metrics
-function wrapTextToLines(ctx: any, text: string, maxPixelWidth = 240): string[] {
+// Wrap text string into lines that fit within maxPixelWidth (238px) using canvas font metrics
+function wrapTextToLines(ctx: any, text: string, fontStr: string, maxPixelWidth = 238): string[] {
+  ctx.font = fontStr;
   const words = text.split(' ');
   const lines: string[] = [];
   let currentLine = '';
@@ -92,8 +94,8 @@ function wrapTextToLines(ctx: any, text: string, maxPixelWidth = 240): string[] 
 }
 
 /**
- * Node Canvas Thai Font & Formatted Math E-Ink Engine (LANDSCAPE 250x122px)
- * Converts AI answers (Thai/English Markdown + LaTeX Math) into 250x122 Base64 PNG images.
+ * Universal Large-Font Thai/English/Math E-Ink Engine (LANDSCAPE 250x122px)
+ * Base font size increased to 14px - 16px with multi-language font stack for optimal readability.
  */
 export function renderEInkPages(rawText: string): RenderedPagePayload {
   ensureFontRegistered();
@@ -105,7 +107,12 @@ export function renderEInkPages(rawText: string): RenderedPagePayload {
   // Create temporary canvas for text measurement
   const dummyCanvas = createCanvas(PAGE_WIDTH, PAGE_HEIGHT);
   const dCtx = dummyCanvas.getContext('2d');
-  dCtx.font = '10px "Noto Sans Thai", sans-serif';
+
+  // Multi-language font stack: Noto Sans Thai + Segoe UI / Arial fallbacks
+  const bodyFont = '14px "Noto Sans Thai", "Segoe UI", Arial, sans-serif';
+  const header1Font = 'bold 16px "Noto Sans Thai", "Segoe UI", Arial, sans-serif';
+  const header2Font = 'bold 15px "Noto Sans Thai", "Segoe UI", Arial, sans-serif';
+  const mathFont = 'bold 14px "Noto Sans Thai", "Segoe UI", Arial, sans-serif';
 
   const elements: RenderElement[] = [];
 
@@ -119,23 +126,23 @@ export function renderEInkPages(rawText: string): RenderedPagePayload {
     if (part.startsWith('$$') && part.endsWith('$$')) {
       const mathCode = part.slice(2, -2).trim();
       const formattedMath = formatLatexToReadableMath(mathCode);
-      const wrapped = wrapTextToLines(dCtx, '[MATH] ' + formattedMath, 235);
+      const wrapped = wrapTextToLines(dCtx, '[MATH] ' + formattedMath, mathFont, 235);
       for (const wLine of wrapped) {
-        elements.push({ type: 'math', content: wLine, height: 12 });
+        elements.push({ type: 'math', content: wLine, height: 18, font: mathFont });
       }
     } else if (part.startsWith('\\[') && part.endsWith('\\]')) {
       const mathCode = part.slice(2, -2).trim();
       const formattedMath = formatLatexToReadableMath(mathCode);
-      const wrapped = wrapTextToLines(dCtx, '[MATH] ' + formattedMath, 235);
+      const wrapped = wrapTextToLines(dCtx, '[MATH] ' + formattedMath, mathFont, 235);
       for (const wLine of wrapped) {
-        elements.push({ type: 'math', content: wLine, height: 12 });
+        elements.push({ type: 'math', content: wLine, height: 18, font: mathFont });
       }
     } else if ((part.startsWith('$') && part.endsWith('$')) || (part.startsWith('\\(') && part.endsWith('\\)'))) {
       const mathCode = part.startsWith('$') ? part.slice(1, -1).trim() : part.slice(2, -2).trim();
       const formattedMath = formatLatexToReadableMath(mathCode);
-      const wrapped = wrapTextToLines(dCtx, formattedMath, 235);
+      const wrapped = wrapTextToLines(dCtx, formattedMath, bodyFont, 235);
       for (const wLine of wrapped) {
-        elements.push({ type: 'math', content: wLine, height: 11 });
+        elements.push({ type: 'math', content: wLine, height: 17, font: bodyFont });
       }
     } else {
       // Standard Markdown / Plain text lines
@@ -145,28 +152,24 @@ export function renderEInkPages(rawText: string): RenderedPagePayload {
         if (!trimmed) continue;
 
         if (trimmed.startsWith('# ')) {
-          dCtx.font = 'bold 12px "Noto Sans Thai", sans-serif';
-          const wrapped = wrapTextToLines(dCtx, trimmed.replace(/^#\s+/, ''), 235);
+          const wrapped = wrapTextToLines(dCtx, trimmed.replace(/^#\s+/, ''), header1Font, 235);
           for (const wLine of wrapped) {
-            elements.push({ type: 'header', content: wLine, height: 14 });
+            elements.push({ type: 'header', content: wLine, height: 20, font: header1Font });
           }
-          dCtx.font = '10px "Noto Sans Thai", sans-serif';
         } else if (trimmed.startsWith('## ') || trimmed.startsWith('### ')) {
-          dCtx.font = 'bold 11px "Noto Sans Thai", sans-serif';
-          const wrapped = wrapTextToLines(dCtx, trimmed.replace(/^#{2,3}\s+/, ''), 235);
+          const wrapped = wrapTextToLines(dCtx, trimmed.replace(/^#{2,3}\s+/, ''), header2Font, 235);
           for (const wLine of wrapped) {
-            elements.push({ type: 'header', content: wLine, height: 13 });
+            elements.push({ type: 'header', content: wLine, height: 19, font: header2Font });
           }
-          dCtx.font = '10px "Noto Sans Thai", sans-serif';
         } else if (trimmed.startsWith('- ') || trimmed.startsWith('* ') || trimmed.startsWith('• ')) {
-          const wrapped = wrapTextToLines(dCtx, '• ' + trimmed.replace(/^[-*•]\s+/, ''), 235);
+          const wrapped = wrapTextToLines(dCtx, '• ' + trimmed.replace(/^[-*•]\s+/, ''), bodyFont, 235);
           for (const wLine of wrapped) {
-            elements.push({ type: 'bullet', content: wLine, height: 11 });
+            elements.push({ type: 'bullet', content: wLine, height: 17, font: bodyFont });
           }
         } else {
-          const wrapped = wrapTextToLines(dCtx, trimmed, 235);
+          const wrapped = wrapTextToLines(dCtx, trimmed, bodyFont, 235);
           for (const wLine of wrapped) {
-            elements.push({ type: 'text', content: wLine, height: 11 });
+            elements.push({ type: 'text', content: wLine, height: 17, font: bodyFont });
           }
         }
       }
@@ -185,7 +188,7 @@ export function renderEInkPages(rawText: string): RenderedPagePayload {
       currentY = START_Y;
     }
     currentPageElements.push(elem);
-    currentY += elem.height + 1;
+    currentY += elem.height + 2;
   }
 
   if (currentPageElements.length > 0) {
@@ -195,7 +198,7 @@ export function renderEInkPages(rawText: string): RenderedPagePayload {
   const totalPages = pageElementsList.length || 1;
   const pagesBase64: string[] = [];
 
-  // Render each landscape page using node-canvas with registered Thai TTF font
+  // Render each landscape page using node-canvas with registered Thai/English multi-language font stack
   for (let pIdx = 0; pIdx < totalPages; pIdx++) {
     const canvas = createCanvas(PAGE_WIDTH, PAGE_HEIGHT);
     const ctx = canvas.getContext('2d');
@@ -210,33 +213,32 @@ export function renderEInkPages(rawText: string): RenderedPagePayload {
 
     // Header divider line and badge [1/N]
     ctx.beginPath();
-    ctx.moveTo(PADDING, 12);
-    ctx.lineTo(PAGE_WIDTH - PADDING, 12);
+    ctx.moveTo(PADDING, 14);
+    ctx.lineTo(PAGE_WIDTH - PADDING, 14);
     ctx.lineWidth = 1;
     ctx.stroke();
 
-    ctx.font = 'bold 9px "Noto Sans Thai", sans-serif';
+    ctx.font = 'bold 11px "Noto Sans Thai", "Segoe UI", Arial, sans-serif';
     ctx.textAlign = 'right';
-    ctx.fillText(`[${pIdx + 1}/${totalPages}]`, PAGE_WIDTH - PADDING, 10);
+    ctx.fillText(`[${pIdx + 1}/${totalPages}]`, PAGE_WIDTH - PADDING, 11);
     ctx.textAlign = 'left';
 
     const pElements = pageElementsList[pIdx] || [];
     let yPos = START_Y;
 
     for (const elem of pElements) {
+      ctx.font = elem.font;
       if (elem.type === 'header') {
-        ctx.font = 'bold 11px "Noto Sans Thai", sans-serif';
-        ctx.fillText(elem.content, PADDING, yPos + 9);
+        ctx.fillText(elem.content, PADDING, yPos + 12);
         ctx.beginPath();
-        ctx.moveTo(PADDING, yPos + 11);
-        ctx.lineTo(PADDING + ctx.measureText(elem.content).width, yPos + 11);
+        ctx.moveTo(PADDING, yPos + 15);
+        ctx.lineTo(PADDING + ctx.measureText(elem.content).width, yPos + 15);
         ctx.lineWidth = 1;
         ctx.stroke();
       } else {
-        ctx.font = '10px "Noto Sans Thai", sans-serif';
-        ctx.fillText(elem.content, PADDING, yPos + 8);
+        ctx.fillText(elem.content, PADDING, yPos + 11);
       }
-      yPos += elem.height + 1;
+      yPos += elem.height + 2;
     }
 
     // Convert Canvas to PNG Buffer and apply 1-bit monochrome binarization
@@ -281,12 +283,12 @@ function createEmptyPagePayload(message: string): RenderedPagePayload {
 
   ctx.fillStyle = '#000000';
   ctx.strokeStyle = '#000000';
-  ctx.font = '10px "Noto Sans Thai", sans-serif';
-  ctx.fillText(message, PADDING, START_Y + 8);
+  ctx.font = '14px "Noto Sans Thai", "Segoe UI", Arial, sans-serif';
+  ctx.fillText(message, PADDING, START_Y + 12);
 
-  ctx.font = 'bold 9px "Noto Sans Thai", sans-serif';
+  ctx.font = 'bold 11px "Noto Sans Thai", "Segoe UI", Arial, sans-serif';
   ctx.textAlign = 'right';
-  ctx.fillText('[1/1]', PAGE_WIDTH - PADDING, 10);
+  ctx.fillText('[1/1]', PAGE_WIDTH - PADDING, 11);
 
   const canvasBuffer = canvas.toBuffer('image/png');
   const png = PNG.sync.read(canvasBuffer);
