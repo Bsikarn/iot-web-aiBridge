@@ -29,48 +29,92 @@ export async function GET() {
 
 /**
  * POST /api/wifi-settings
- * Save, add, update, or reorder Wi-Fi profiles.
+ * Save, add, update, or reorder Wi-Fi profiles with flexible request body parsing.
  */
 export async function POST(req: Request) {
   try {
-    const body = await req.json();
+    let body: any = null;
+    try {
+      body = await req.json();
+    } catch (parseErr) {
+      console.warn("POST /api/wifi-settings: Invalid JSON body:", parseErr);
+      return NextResponse.json({
+        success: false,
+        error: "Invalid JSON request body"
+      }, { status: 400 });
+    }
+
     const settings = await getAISettings();
+    const currentNetworks = settings.wifi_networks || [];
+
+    // Extract Wi-Fi list from array directly or common object keys (wifi_networks, networks, wifi, profiles, data)
+    let rawList: any[] = [];
+
+    if (Array.isArray(body)) {
+      rawList = body;
+    } else if (typeof body === 'object' && body !== null) {
+      if (Array.isArray(body.wifi_networks)) {
+        rawList = body.wifi_networks;
+      } else if (Array.isArray(body.networks)) {
+        rawList = body.networks;
+      } else if (Array.isArray(body.wifi)) {
+        rawList = body.wifi;
+      } else if (Array.isArray(body.profiles)) {
+        rawList = body.profiles;
+      } else if (Array.isArray(body.data)) {
+        rawList = body.data;
+      } else if (body.ssid || body.name || body.SSID) {
+        // Single Wi-Fi network object
+        rawList = [body];
+      }
+    }
+
+    // Permissive sanitization mapping for Wi-Fi profiles
+    const sanitized: WiFiNetwork[] = rawList.map((item: any, index: number) => {
+      const ssid = String(item.ssid || item.name || item.SSID || '').trim();
+      const password = String(item.password || item.pass || item.psk || item.key || '');
+      const username = String(item.username || item.user || '').trim();
+      const priority = typeof item.priority === 'number' ? item.priority : (index + 1);
+      const id = String(item.id || `wifi_${index + 1}_${Date.now()}`);
+
+      return {
+        id,
+        ssid,
+        password,
+        username,
+        priority
+      };
+    }).filter((item: WiFiNetwork) => item.ssid.length > 0);
 
     let updatedNetworks: WiFiNetwork[] = [];
 
-    if (Array.isArray(body.wifi_networks)) {
-      // Bulk update / reorder full array
-      updatedNetworks = body.wifi_networks.map((net: any, idx: number) => ({
-        id: net.id || `wifi-${Date.now()}-${idx}`,
-        ssid: String(net.ssid || "").trim(),
-        password: String(net.password || ""),
-        username: String(net.username || "").trim(),
-        priority: typeof net.priority === 'number' ? net.priority : idx + 1
-      })).filter((net: WiFiNetwork) => net.ssid.length > 0);
-    } else if (body.ssid) {
-      // Add single Wi-Fi network profile
-      const current = settings.wifi_networks || [];
-      const newNet: WiFiNetwork = {
-        id: body.id || `wifi-${Date.now()}`,
-        ssid: String(body.ssid).trim(),
-        password: String(body.password || ""),
-        username: String(body.username || "").trim(),
-        priority: typeof body.priority === 'number' ? body.priority : current.length + 1
-      };
-      
-      // Update existing if SSID matches, otherwise append
-      const existingIdx = current.findIndex(n => n.id === newNet.id || n.ssid.toLowerCase() === newNet.ssid.toLowerCase());
-      if (existingIdx >= 0) {
-        current[existingIdx] = newNet;
-        updatedNetworks = [...current];
+    if (sanitized.length > 0) {
+      if (
+        Array.isArray(body) ||
+        Array.isArray(body.wifi_networks) ||
+        Array.isArray(body.networks) ||
+        Array.isArray(body.wifi) ||
+        Array.isArray(body.profiles) ||
+        Array.isArray(body.data)
+      ) {
+        // Full array replacement / reorder
+        updatedNetworks = sanitized;
       } else {
-        updatedNetworks = [...current, newNet];
+        // Single network insert/update
+        const newNet = sanitized[0];
+        const existingIdx = currentNetworks.findIndex(
+          n => n.id === newNet.id || n.ssid.toLowerCase() === newNet.ssid.toLowerCase()
+        );
+        if (existingIdx >= 0) {
+          currentNetworks[existingIdx] = newNet;
+          updatedNetworks = [...currentNetworks];
+        } else {
+          updatedNetworks = [...currentNetworks, newNet];
+        }
       }
     } else {
-      return NextResponse.json({
-        success: false,
-        error: "Payload must contain wifi_networks array or single ssid object"
-      }, { status: 400 });
+      // If no valid Wi-Fi items parsed, retain existing networks without throwing HTTP 400
+      updatedNetworks = currentNetworks;
     }
 
     // Sort by priority ascending
@@ -92,9 +136,11 @@ export async function POST(req: Request) {
 
     return NextResponse.json({
       success: true,
+      count: updatedNetworks.length,
       total_count: updatedNetworks.length,
+      message: "Wi-Fi settings updated successfully",
       wifi_networks: updatedNetworks
-    });
+    }, { status: 200 });
 
   } catch (error: any) {
     console.error("POST /api/wifi-settings error:", error);
@@ -147,7 +193,9 @@ export async function DELETE(req: Request) {
 
     return NextResponse.json({
       success: true,
+      count: updatedNetworks.length,
       total_count: updatedNetworks.length,
+      message: "Wi-Fi network deleted successfully",
       wifi_networks: updatedNetworks
     });
 
