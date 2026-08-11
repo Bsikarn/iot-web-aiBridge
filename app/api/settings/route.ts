@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getAISettings, updateAISettings, AISetting, DEFAULT_AI_SETTING } from '@/lib/edge-config';
+import { getAISettings, updateAISettings, AISetting, DEFAULT_AI_SETTING, WiFiNetwork } from '@/lib/edge-config';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -7,6 +7,7 @@ export const revalidate = 0;
 export async function GET() {
   try {
     const settings = await getAISettings();
+    const wifiNetworks = (settings.wifi_networks || []).sort((a, b) => a.priority - b.priority);
     
     // Construct full map of command slots for hardware board auto-discovery
     const slots = Array.from({ length: 10 }, (_, i) => {
@@ -24,8 +25,12 @@ export async function GET() {
 
     return NextResponse.json({
       success: true,
-      data: settings,
-      slots: slots
+      data: {
+        ...settings,
+        wifi_networks: wifiNetworks
+      },
+      slots: slots,
+      wifi_networks: wifiNetworks
     });
   } catch (error: any) {
     console.error("GET /api/settings error:", error);
@@ -67,11 +72,16 @@ export async function POST(req: Request) {
       newModels = currentSettings.models;
     }
 
+    const newWifiNetworks: WiFiNetwork[] = Array.isArray(body.wifi_networks)
+      ? body.wifi_networks
+      : (currentSettings.wifi_networks || []);
+
     const updatedSettings: AISetting = {
       prompts: newPrompts,
       kbs: newKbs,
       models: newModels,
-      history: currentSettings.history || []
+      history: currentSettings.history || [],
+      wifi_networks: newWifiNetworks
     };
 
     const result = await updateAISettings(updatedSettings);

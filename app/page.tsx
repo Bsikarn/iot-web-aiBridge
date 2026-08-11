@@ -15,11 +15,20 @@ interface HistoryRecord {
   imageUrl: string;
 }
 
+interface WiFiNetwork {
+  id: string;
+  ssid: string;
+  password: string;
+  username?: string;
+  priority: number;
+}
+
 interface AISetting {
   prompts: string[];
   kbs: string[];
   models: string[];
   history: HistoryRecord[];
+  wifi_networks?: WiFiNetwork[];
 }
 
 const PRESET_MODELS = [
@@ -40,13 +49,21 @@ export default function Dashboard() {
   const [kbs, setKbs] = useState<string[]>(Array(3).fill(""));
   const [models, setModels] = useState<string[]>(PRESET_MODELS);
   const [history, setHistory] = useState<HistoryRecord[]>([]);
+  const [wifiNetworks, setWifiNetworks] = useState<WiFiNetwork[]>([]);
+
+  // Form state for adding new Wi-Fi network
+  const [newSsid, setNewSsid] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [newUsername, setNewUsername] = useState("");
+  const [newPriority, setNewPriority] = useState<number>(1);
+  const [showPasswords, setShowPasswords] = useState<{ [key: string]: boolean }>({});
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [uploadingKb, setUploadingKb] = useState<{ [key: number]: boolean }>({});
   const [expandedHistory, setExpandedHistory] = useState<{ [key: number]: boolean }>({ 0: true });
-  const [activeTab, setActiveTab] = useState<'prompts' | 'kbs' | 'models' | 'history'>('prompts');
+  const [activeTab, setActiveTab] = useState<'prompts' | 'models' | 'kbs' | 'wifi' | 'history'>('prompts');
 
   // Load configuration from settings API
   const loadSettings = async () => {
@@ -73,10 +90,14 @@ export default function Dashboard() {
           normalizedModels = [...PRESET_MODELS];
         }
 
+        const normalizedWifi = (d.wifi_networks || []).sort((a, b) => a.priority - b.priority);
+
         setPrompts(normalizedPrompts);
         setKbs(normalizedKbs);
         setModels(normalizedModels);
         setHistory(d.history || []);
+        setWifiNetworks(normalizedWifi);
+        setNewPriority(normalizedWifi.length + 1);
       }
     } catch (err) {
       console.error("Failed to load settings:", err);
@@ -90,20 +111,26 @@ export default function Dashboard() {
   }, []);
 
   // Save current settings to server with robust error reporting
-  const handleSave = async (updatedPrompts = prompts, updatedKbs = kbs, updatedModels = models) => {
+  const handleSave = async (
+    updatedPrompts = prompts,
+    updatedKbs = kbs,
+    updatedModels = models,
+    updatedWifi = wifiNetworks
+  ) => {
     setSaving(true);
     setSaveSuccess(false);
 
     try {
-      // Safely format 10 Prompts, 3 KBs, and 10 AI Model slots with fallbacks
       const safePrompts = Array.from({ length: 10 }, (_, i) => updatedPrompts[i] || "");
       const safeKbs = Array.from({ length: 3 }, (_, i) => updatedKbs[i] || "");
       const safeModels = Array.from({ length: 10 }, (_, i) => updatedModels[i] || PRESET_MODELS[i] || "");
+      const safeWifi = [...updatedWifi].sort((a, b) => a.priority - b.priority);
 
       const payload = {
         prompts: safePrompts,
         kbs: safeKbs,
-        models: safeModels
+        models: safeModels,
+        wifi_networks: safeWifi
       };
 
       console.log("1. Constructing Save Payload:", payload);
@@ -142,6 +169,60 @@ export default function Dashboard() {
     }
   };
 
+  // Wi-Fi Management Handlers
+  const handleAddWifi = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newSsid.trim()) {
+      alert("Please enter a valid Wi-Fi SSID.");
+      return;
+    }
+
+    const newNet: WiFiNetwork = {
+      id: `wifi-${Date.now()}`,
+      ssid: newSsid.trim(),
+      password: newPassword,
+      username: newUsername.trim() || undefined,
+      priority: newPriority || wifiNetworks.length + 1
+    };
+
+    const updated = [...wifiNetworks, newNet].sort((a, b) => a.priority - b.priority);
+    setWifiNetworks(updated);
+    setNewSsid("");
+    setNewPassword("");
+    setNewUsername("");
+    setNewPriority(updated.length + 1);
+
+    await handleSave(prompts, kbs, models, updated);
+  };
+
+  const handleDeleteWifi = async (id: string) => {
+    if (confirm("Are you sure you want to delete this Wi-Fi network profile?")) {
+      const updated = wifiNetworks.filter(net => net.id !== id);
+      setWifiNetworks(updated);
+      await handleSave(prompts, kbs, models, updated);
+    }
+  };
+
+  const handleMovePriority = async (index: number, direction: 'up' | 'down') => {
+    if ((direction === 'up' && index === 0) || (direction === 'down' && index === wifiNetworks.length - 1)) {
+      return;
+    }
+    const updated = [...wifiNetworks];
+    const targetIndex = direction === 'up' ? index - 1 : index + 1;
+    const temp = updated[index];
+    updated[index] = updated[targetIndex];
+    updated[targetIndex] = temp;
+
+    // Re-assign priorities explicitly based on new order
+    const reordered = updated.map((net, i) => ({ ...net, priority: i + 1 }));
+    setWifiNetworks(reordered);
+    await handleSave(prompts, kbs, models, reordered);
+  };
+
+  const togglePasswordVisibility = (id: string) => {
+    setShowPasswords(prev => ({ ...prev, [id]: !prev[id] }));
+  };
+
   // Upload PDF/TXT file and append extracted text to Knowledge Base
   const handleFileUpload = async (kbIdx: number, e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
@@ -164,7 +245,7 @@ export default function Dashboard() {
         const newKbs = [...kbs];
         newKbs[kbIdx] = (newKbs[kbIdx] || "") + data.text;
         setKbs(newKbs);
-        await handleSave(prompts, newKbs, models);
+        await handleSave(prompts, newKbs, models, wifiNetworks);
       } else {
         alert("Failed to parse file: " + (data.error || "Unknown error"));
       }
@@ -182,7 +263,7 @@ export default function Dashboard() {
       const newKbs = [...kbs];
       newKbs[kbIdx] = "";
       setKbs(newKbs);
-      await handleSave(prompts, newKbs, models);
+      await handleSave(prompts, newKbs, models, wifiNetworks);
     }
   };
 
@@ -301,6 +382,20 @@ export default function Dashboard() {
           >
             <span>📚 Knowledge Bases</span>
             <span className="bg-[#A3D8F4]/30 text-[#0D6EFD] text-[10px] px-2 py-0.5 rounded-full font-bold">3 Slots</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('wifi')}
+            className={`px-5 py-2.5 rounded-t-xl font-bold text-xs transition-all flex items-center gap-2 ${
+              activeTab === 'wifi'
+                ? 'bg-white text-[#0D6EFD] border-t-2 border-x border-[#0D6EFD] shadow-sm'
+                : 'text-slate-500 hover:text-slate-800 hover:bg-slate-100/50'
+            }`}
+          >
+            <span>📶 Wi-Fi Settings</span>
+            <span className="bg-emerald-100 text-emerald-700 text-[10px] px-2 py-0.5 rounded-full font-bold">
+              {wifiNetworks.length}
+            </span>
           </button>
 
           <button
@@ -515,7 +610,179 @@ export default function Dashboard() {
           </section>
         )}
 
-        {/* Tab 4: Latest Answers History Log (Max 3 records) */}
+        {/* Tab 4: Wi-Fi Management & Hardware Sync */}
+        {activeTab === 'wifi' && (
+          <section className="space-y-6">
+            <div>
+              <h2 className="text-lg font-extrabold text-slate-800">IoT Board Wi-Fi Profiles</h2>
+              <p className="text-xs text-slate-400">
+                Configure priority-ordered Wi-Fi networks for your IoT board (Raspberry Pi). The hardware pulls these profiles via GET /api/wifi-settings during network sync.
+              </p>
+            </div>
+
+            {/* Add New Wi-Fi Form */}
+            <form onSubmit={handleAddWifi} className="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-[0_4px_20px_rgb(0,0,0,0.03)] space-y-4">
+              <h3 className="text-xs font-bold text-[#0D6EFD] uppercase tracking-wider flex items-center gap-2">
+                <span>➕ Add New Wi-Fi Profile</span>
+              </h3>
+
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <div className="space-y-1">
+                  <label className="text-[11px] font-bold text-slate-700">SSID (Network Name)*</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g. Home_WiFi"
+                    value={newSsid}
+                    onChange={(e) => setNewSsid(e.target.value)}
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs outline-none focus:bg-white focus:border-[#0D6EFD] font-mono"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[11px] font-bold text-slate-700">Password</label>
+                  <input
+                    type="password"
+                    placeholder="WPA2/WPA3 password"
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs outline-none focus:bg-white focus:border-[#0D6EFD] font-mono"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[11px] font-bold text-slate-700">Username (Optional)</label>
+                  <input
+                    type="text"
+                    placeholder="Enterprise login if needed"
+                    value={newUsername}
+                    onChange={(e) => setNewUsername(e.target.value)}
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs outline-none focus:bg-white focus:border-[#0D6EFD] font-mono"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[11px] font-bold text-slate-700">Priority (1 = Highest)</label>
+                  <div className="flex gap-2">
+                    <input
+                      type="number"
+                      min={1}
+                      value={newPriority}
+                      onChange={(e) => setNewPriority(parseInt(e.target.value, 10) || 1)}
+                      className="w-20 px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs outline-none focus:bg-white focus:border-[#0D6EFD] font-mono"
+                    />
+                    <button
+                      type="submit"
+                      className="flex-1 bg-[#0D6EFD] hover:bg-[#0B5ED7] text-white font-bold text-xs rounded-xl px-4 py-2 shadow-md shadow-[#0D6EFD]/20 transition-all active:scale-95"
+                    >
+                      + Add Wi-Fi
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </form>
+
+            {/* List of Configured Wi-Fi Networks */}
+            <div className="space-y-3">
+              <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider">
+                Configured Network Profiles (Sorted by Connection Priority)
+              </h3>
+
+              {wifiNetworks.length === 0 ? (
+                <div className="bg-white p-8 text-center rounded-2xl border border-slate-200/80 text-xs text-slate-400">
+                  No Wi-Fi profiles configured yet. Add one using the form above.
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 gap-3">
+                  {wifiNetworks.map((net, idx) => (
+                    <div
+                      key={net.id || idx}
+                      className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-sm flex flex-col md:flex-row items-start md:items-center justify-between gap-4 hover:border-[#A3D8F4] transition-all"
+                    >
+                      <div className="flex items-center gap-3">
+                        <span className="w-8 h-8 rounded-xl bg-emerald-50 text-emerald-700 font-extrabold text-xs flex items-center justify-center border border-emerald-200">
+                          #{net.priority}
+                        </span>
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm font-bold text-slate-800 font-mono">{net.ssid}</span>
+                            {net.username && (
+                              <span className="text-[10px] bg-purple-50 text-purple-700 border border-purple-200 px-2 py-0.5 rounded-md font-mono">
+                                Enterprise ({net.username})
+                              </span>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-2 text-xs text-slate-500 font-mono mt-0.5">
+                            <span>Password: {showPasswords[net.id] ? (net.password || 'None') : (net.password ? '••••••••' : 'Open Network')}</span>
+                            {net.password && (
+                              <button
+                                type="button"
+                                onClick={() => togglePasswordVisibility(net.id)}
+                                className="text-[10px] text-blue-600 hover:underline"
+                              >
+                                {showPasswords[net.id] ? 'Hide' : 'Show'}
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2 self-end md:self-auto">
+                        <button
+                          type="button"
+                          onClick={() => handleMovePriority(idx, 'up')}
+                          disabled={idx === 0}
+                          className="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-bold transition-all disabled:opacity-30"
+                          title="Move Priority Up"
+                        >
+                          ⬆️ Up
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleMovePriority(idx, 'down')}
+                          disabled={idx === wifiNetworks.length - 1}
+                          className="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-bold transition-all disabled:opacity-30"
+                          title="Move Priority Down"
+                        >
+                          ⬇️ Down
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteWifi(net.id)}
+                          className="px-3 py-1.5 bg-red-50 hover:bg-red-600 hover:text-white text-red-600 rounded-lg text-xs font-bold transition-all border border-red-200"
+                        >
+                          🗑️ Delete
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Hardware Sync Protocol JSON Preview Box */}
+            <div className="bg-slate-900 p-5 rounded-2xl text-slate-100 space-y-2 border border-slate-800">
+              <div className="flex justify-between items-center">
+                <span className="text-xs font-mono font-bold text-emerald-400 flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
+                  Hardware Sync Payload (GET /api/wifi-settings)
+                </span>
+                <span className="text-[10px] font-mono text-slate-400">
+                  Raspberry Pi wpa_supplicant Sync JSON
+                </span>
+              </div>
+              <pre className="p-4 bg-slate-950 rounded-xl text-[11px] font-mono text-emerald-300 overflow-x-auto leading-relaxed border border-slate-800">
+{JSON.stringify({
+  success: true,
+  total_count: wifiNetworks.length,
+  wifi_networks: wifiNetworks
+}, null, 2)}
+              </pre>
+            </div>
+          </section>
+        )}
+
+        {/* Tab 5: Latest Answers History Log (Max 3 records) */}
         {activeTab === 'history' && (
           <section className="space-y-4">
             <div>
@@ -615,7 +882,7 @@ export default function Dashboard() {
       {/* Footer */}
       <footer className="max-w-5xl mx-auto px-6 mt-12 text-center">
         <p className="text-[11px] font-mono text-slate-400 tracking-widest uppercase">
-          AI BRIDGE // 10 PROMPTS • 10 AI MODELS • 3 KNOWLEDGE BASES
+          AI BRIDGE // 10 PROMPTS • 10 AI MODELS • 3 KNOWLEDGE BASES • WI-FI SYNC
         </p>
       </footer>
     </div>

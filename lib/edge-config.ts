@@ -10,11 +10,20 @@ export interface HistoryRecord {
   imageUrl: string;
 }
 
+export interface WiFiNetwork {
+  id: string;
+  ssid: string;
+  password: string;
+  username?: string;
+  priority: number;
+}
+
 export interface AISetting {
   prompts: string[];
   kbs: string[];
   models: string[]; // 10 AI Model slots (Model Slot #1 to #10)
   history: HistoryRecord[];
+  wifi_networks?: WiFiNetwork[];
 }
 
 export interface UpdateResult {
@@ -53,7 +62,16 @@ export const DEFAULT_AI_SETTING: AISetting = {
     "mistralai/mistral-small-24b-instruct-2501",
     "qwen/qwen-2.5-coder-32b-instruct"
   ],
-  history: []
+  history: [],
+  wifi_networks: [
+    {
+      id: "wifi-default-1",
+      ssid: "Home_WiFi",
+      password: "",
+      username: "",
+      priority: 1
+    }
+  ]
 };
 
 // In-memory fallback cache for local dev or when Global Config / Edge Config API is unreachable
@@ -79,6 +97,9 @@ export async function getAISettings(): Promise<AISetting> {
             legacyObj.claude || DEFAULT_AI_SETTING.models[2],
             ...DEFAULT_AI_SETTING.models.slice(3)
           ];
+        }
+        if (!remoteData.wifi_networks) {
+          remoteData.wifi_networks = [...(DEFAULT_AI_SETTING.wifi_networks || [])];
         }
         localMemoryCache = remoteData;
         return remoteData;
@@ -115,12 +136,14 @@ export async function updateAISettings(data: AISetting): Promise<UpdateResult> {
   }
 
   const history = (data.history || []).slice(0, 3); // Max 3 records
+  const wifi_networks = (data.wifi_networks || []).sort((a, b) => a.priority - b.priority);
 
   const updatedSetting: AISetting = {
     prompts,
     kbs,
     models,
-    history
+    history,
+    wifi_networks
   };
 
   // Instantly synchronize in-memory cache for immediate UI revalidation
