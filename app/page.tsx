@@ -58,7 +58,6 @@ export default function Dashboard() {
   const [newPassword, setNewPassword] = useState("");
   const [newUsername, setNewUsername] = useState("");
   const [newPriority, setNewPriority] = useState<number>(1);
-  const [showPasswords, setShowPasswords] = useState<{ [key: string]: boolean }>({});
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -235,10 +234,6 @@ export default function Dashboard() {
     const reordered = updated.map((net, i) => ({ ...net, priority: i + 1 }));
     setWifiNetworks(reordered);
     await handleSave(prompts, kbs, models, reordered);
-  };
-
-  const togglePasswordVisibility = (id: string) => {
-    setShowPasswords(prev => ({ ...prev, [id]: !prev[id] }));
   };
 
   // Upload PDF/TXT file and append extracted text to Knowledge Base
@@ -700,7 +695,7 @@ export default function Dashboard() {
               </div>
             </form>
 
-            {/* List of Configured Wi-Fi Networks with Inline Editing */}
+            {/* List of Configured Wi-Fi Networks with Secure Status & Password Overwrite */}
             <div className="space-y-3">
               <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider">
                 Configured Network Profiles (Sorted by Connection Priority)
@@ -723,11 +718,25 @@ export default function Dashboard() {
                             #{net.priority}
                           </span>
                           <div>
-                            <span className="text-xs font-bold text-slate-800 uppercase tracking-wider">
-                              Wi-Fi Profile #{idx + 1}
-                            </span>
-                            <p className="text-[10px] font-mono text-slate-400">
-                              Priority Level {net.priority}
+                            <div className="flex items-center gap-2">
+                              <span className="text-sm font-bold text-slate-800 font-mono">{net.ssid}</span>
+                              {net.password && net.password.length > 0 ? (
+                                <span className="bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-0.5 rounded-md font-mono text-[10px]">
+                                  🔒 Password Saved
+                                </span>
+                              ) : (
+                                <span className="bg-slate-100 text-slate-500 border border-slate-200 px-2 py-0.5 rounded-md font-mono text-[10px]">
+                                  🔓 Open Network (No Password)
+                                </span>
+                              )}
+                              {net.username && (
+                                <span className="bg-purple-50 text-purple-700 border border-purple-200 px-2 py-0.5 rounded-md font-mono text-[10px]">
+                                  Enterprise ({net.username})
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-[10px] font-mono text-slate-400 mt-0.5">
+                              Priority Level #{net.priority}
                             </p>
                           </div>
                         </div>
@@ -761,7 +770,7 @@ export default function Dashboard() {
                         </div>
                       </div>
 
-                      {/* Inline Editable Inputs for SSID, Password, and Username */}
+                      {/* Inputs for SSID, Password Overwrite, and Username */}
                       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                         <div className="space-y-1">
                           <label className="text-[11px] font-bold text-slate-700">SSID (Network Name)</label>
@@ -775,22 +784,12 @@ export default function Dashboard() {
                         </div>
 
                         <div className="space-y-1">
-                          <div className="flex justify-between items-center">
-                            <label className="text-[11px] font-bold text-slate-700">Password</label>
-                            <button
-                              type="button"
-                              onClick={() => togglePasswordVisibility(net.id)}
-                              className="text-[10px] text-blue-600 hover:underline font-medium"
-                            >
-                              {showPasswords[net.id] ? '🔒 Mask' : '👁️ Reveal'}
-                            </button>
-                          </div>
+                          <label className="text-[11px] font-bold text-slate-700">Set/Update Password</label>
                           <input
-                            type={showPasswords[net.id] ? 'text' : 'password'}
+                            type="password"
                             className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs outline-none focus:bg-white focus:border-[#0D6EFD] font-mono"
-                            value={net.password || ''}
                             onChange={(e) => handleUpdateWifiNetwork(idx, 'password', e.target.value)}
-                            placeholder="WPA2/WPA3 password (or leave empty for Open Network)"
+                            placeholder={net.password && net.password.length > 0 ? "Type new password to overwrite" : "Enter network password"}
                           />
                         </div>
 
@@ -809,26 +808,6 @@ export default function Dashboard() {
                   ))}
                 </div>
               )}
-            </div>
-
-            {/* Hardware Sync Protocol JSON Preview Box */}
-            <div className="bg-slate-900 p-5 rounded-2xl text-slate-100 space-y-2 border border-slate-800">
-              <div className="flex justify-between items-center">
-                <span className="text-xs font-mono font-bold text-emerald-400 flex items-center gap-2">
-                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
-                  Hardware Sync Payload (GET /api/wifi-settings)
-                </span>
-                <span className="text-[10px] font-mono text-slate-400">
-                  Raspberry Pi wpa_supplicant Sync JSON
-                </span>
-              </div>
-              <pre className="p-4 bg-slate-950 rounded-xl text-[11px] font-mono text-emerald-300 overflow-x-auto leading-relaxed border border-slate-800">
-{JSON.stringify({
-  success: true,
-  total_count: wifiNetworks.length,
-  wifi_networks: wifiNetworks
-}, null, 2)}
-              </pre>
             </div>
           </section>
         )}
