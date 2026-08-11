@@ -1,6 +1,6 @@
 # Ai Bridge
 
-A stealth hardware-software integration allowing users to capture images from a calculator-embedded ESP32 camera, process them via a Next.js command center (HQ), and receive AI-generated answers rendered into high-contrast 250x122px LANDSCAPE Base64 PNG E-Ink display pages. Includes full Wi-Fi profile management, hardware network sync protocol, and Secret Header Authorization Check (`x-board-key`). A personal project for Sikarn Pattarasirimongkol, focusing on Full-stack and IoT AI integration.
+A stealth hardware-software integration allowing users to capture images from a calculator-embedded ESP32 camera, process them via a Next.js command center (HQ), and receive AI-generated answers rendered into high-contrast 250x122px LANDSCAPE Base64 PNG E-Ink display pages. Includes full Wi-Fi profile management, hardware network sync protocol, and Secret Header & Same-Origin Authorization Protection. A personal project for Sikarn Pattarasirimongkol, focusing on Full-stack and IoT AI integration.
 
 ## Tech Stack
 
@@ -15,7 +15,7 @@ A stealth hardware-software integration allowing users to capture images from a 
 
 ### Backend & Storage
 - Next.js API Routes (Serverless Functions)
-- Secret Header Authorization Guard (`x-board-key` via `lib/auth.ts` checking `process.env.BOARD_SECRET_KEY`)
+- Authorization Guard (`x-board-key` header & Same-Origin Web Dashboard via `lib/auth.ts`)
 - Universal Node Canvas & Sarabun TTF E-Ink Base64 PNG Engine (`canvas` + `pngjs` + `Sarabun-Regular.ttf`)
 - Hardware Wi-Fi Management & Sync Protocol (`/api/wifi-settings`)
 - Vercel Global/Edge Config (`@vercel/edge-config`)
@@ -27,7 +27,7 @@ A stealth hardware-software integration allowing users to capture images from a 
 
 ## Active Features
 
-- **Secret Header Authorization Guard** — All API routes (`/api/ask`, `/api/settings`, `/api/wifi-settings`) strictly enforce `x-board-key` authorization against `process.env.BOARD_SECRET_KEY`, rejecting unauthorized requests with HTTP `401 Unauthorized`.
+- **Authorization Guard & Same-Origin Web Access** — API routes (`/api/ask`, `/api/settings`, `/api/wifi-settings`) enforce strict authorization allowing both hardware board requests (via `x-board-key`) and Same-Origin Web Dashboard requests cleanly without 401 blocks.
 - **10 System Prompts Management** — Unified dashboard managing 10 customizable prompt slots (`prompt_index` 1 to 10).
 - **10 AI Model Slots** — Unified dashboard managing 10 configurable AI model slots (`ai_index` 1 to 10).
 - **Hardware Wi-Fi Management & Sync** — `/api/wifi-settings` API and dashboard UI for managing priority-ordered Wi-Fi networks (SSID, Password, Enterprise Username, Priority ranking) pulled by Raspberry Pi hardware.

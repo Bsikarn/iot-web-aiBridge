@@ -11,7 +11,7 @@ export const revalidate = 0;
  */
 export async function GET(req: Request) {
   try {
-    // Secret Header Authorization Check (x-board-key)
+    // Allow valid x-board-key or Same-Origin / Web Dashboard access
     if (!isAuthorizedBoardRequest(req)) {
       return NextResponse.json(
         { error: "Unauthorized API Access", status: 401 },
@@ -42,7 +42,7 @@ export async function GET(req: Request) {
  */
 export async function POST(req: Request) {
   try {
-    // Secret Header Authorization Check (x-board-key)
+    // Allow valid x-board-key or Same-Origin / Web Dashboard access
     if (!isAuthorizedBoardRequest(req)) {
       return NextResponse.json(
         { error: "Unauthorized API Access", status: 401 },
@@ -174,7 +174,7 @@ export async function POST(req: Request) {
  */
 export async function DELETE(req: Request) {
   try {
-    // Secret Header Authorization Check (x-board-key)
+    // Allow valid x-board-key or Same-Origin / Web Dashboard access
     if (!isAuthorizedBoardRequest(req)) {
       return NextResponse.json(
         { error: "Unauthorized API Access", status: 401 },

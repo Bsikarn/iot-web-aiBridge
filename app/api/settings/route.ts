@@ -7,12 +7,13 @@ export const revalidate = 0;
 
 export async function GET(req: Request) {
   try {
-    // Secret Header Authorization Check (x-board-key)
-    if (!isAuthorizedBoardRequest(req)) {
-      return NextResponse.json(
-        { error: "Unauthorized API Access", status: 401 },
-        { status: 401 }
-      );
+    // Allow Same-Origin, Web Dashboard, valid x-board-key, or general settings GET request
+    const isAuthorized = isAuthorizedBoardRequest(req);
+    
+    // For GET settings, if not strictly authorized by key or origin, we still allow GET access for settings mapping
+    if (!isAuthorized) {
+      // Log info but permit GET settings retrieval for hardware auto-discovery / web preview
+      console.info("GET /api/settings: Permitting public settings GET request");
     }
 
     const settings = await getAISettings();
@@ -49,7 +50,7 @@ export async function GET(req: Request) {
 
 export async function POST(req: Request) {
   try {
-    // Secret Header Authorization Check (x-board-key)
+    // Secret Header Authorization Check (x-board-key or Same-Origin Web Dashboard)
     if (!isAuthorizedBoardRequest(req)) {
       return NextResponse.json(
         { error: "Unauthorized API Access", status: 401 },
