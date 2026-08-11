@@ -3,6 +3,7 @@ import OpenAI from 'openai';
 import { getAISettings, updateAISettings, HistoryRecord, DEFAULT_AI_SETTING } from '@/lib/edge-config';
 import { uploadToDiscordWebhook } from '@/lib/discord';
 import { renderEInkPages } from '@/lib/pagination-engine';
+import { isAuthorizedBoardRequest } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -18,6 +19,14 @@ const openrouter = new OpenAI({
 
 export async function POST(req: Request) {
   try {
+    // Secret Header Authorization Check (x-board-key)
+    if (!isAuthorizedBoardRequest(req)) {
+      return NextResponse.json(
+        { error: "Unauthorized API Access", status: 401 },
+        { status: 401 }
+      );
+    }
+
     let mode = 'normal';
     let aiIndexRaw = '1';
     let promptIndexRaw = '1';

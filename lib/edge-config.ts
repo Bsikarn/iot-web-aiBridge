@@ -119,7 +119,7 @@ export async function updateAISettings(data: AISetting): Promise<UpdateResult> {
   // Normalize arrays to ensure exact element counts
   const prompts = Array.from({ length: 10 }, (_, i) => data.prompts[i] || "");
   const kbs = Array.from({ length: 3 }, (_, i) => data.kbs[i] || "");
-  
+
   let models: string[] = [];
   if (Array.isArray(data.models)) {
     models = Array.from({ length: 10 }, (_, i) => data.models[i] || DEFAULT_AI_SETTING.models[i] || "");
@@ -174,7 +174,7 @@ export async function updateAISettings(data: AISetting): Promise<UpdateResult> {
       if (!res.ok) {
         const errText = await res.text();
         let parsedErr: any = null;
-        try { parsedErr = JSON.parse(errText); } catch {}
+        try { parsedErr = JSON.parse(errText); } catch { }
         const errorMsg = parsedErr?.error?.message || parsedErr?.error || errText || res.statusText;
         console.error(`[Global Config API Error ${res.status}]:`, errorMsg);
 

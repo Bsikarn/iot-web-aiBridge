@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getAISettings, updateAISettings, WiFiNetwork } from '@/lib/edge-config';
+import { isAuthorizedBoardRequest } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -8,8 +9,16 @@ export const revalidate = 0;
  * GET /api/wifi-settings
  * Returns sorted list of Wi-Fi profiles based on priority for hardware board sync (Raspberry Pi).
  */
-export async function GET() {
+export async function GET(req: Request) {
   try {
+    // Secret Header Authorization Check (x-board-key)
+    if (!isAuthorizedBoardRequest(req)) {
+      return NextResponse.json(
+        { error: "Unauthorized API Access", status: 401 },
+        { status: 401 }
+      );
+    }
+
     const settings = await getAISettings();
     const wifiNetworks = (settings.wifi_networks || []).sort((a, b) => a.priority - b.priority);
 
@@ -33,6 +42,14 @@ export async function GET() {
  */
 export async function POST(req: Request) {
   try {
+    // Secret Header Authorization Check (x-board-key)
+    if (!isAuthorizedBoardRequest(req)) {
+      return NextResponse.json(
+        { error: "Unauthorized API Access", status: 401 },
+        { status: 401 }
+      );
+    }
+
     let body: any = null;
     try {
       body = await req.json();
@@ -157,6 +174,14 @@ export async function POST(req: Request) {
  */
 export async function DELETE(req: Request) {
   try {
+    // Secret Header Authorization Check (x-board-key)
+    if (!isAuthorizedBoardRequest(req)) {
+      return NextResponse.json(
+        { error: "Unauthorized API Access", status: 401 },
+        { status: 401 }
+      );
+    }
+
     const { searchParams } = new URL(req.url);
     const id = searchParams.get('id');
     const ssid = searchParams.get('ssid');

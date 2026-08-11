@@ -1,11 +1,20 @@
 import { NextResponse } from 'next/server';
 import { getAISettings, updateAISettings, AISetting, DEFAULT_AI_SETTING, WiFiNetwork } from '@/lib/edge-config';
+import { isAuthorizedBoardRequest } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
-export async function GET() {
+export async function GET(req: Request) {
   try {
+    // Secret Header Authorization Check (x-board-key)
+    if (!isAuthorizedBoardRequest(req)) {
+      return NextResponse.json(
+        { error: "Unauthorized API Access", status: 401 },
+        { status: 401 }
+      );
+    }
+
     const settings = await getAISettings();
     const wifiNetworks = (settings.wifi_networks || []).sort((a, b) => a.priority - b.priority);
     
@@ -40,6 +49,14 @@ export async function GET() {
 
 export async function POST(req: Request) {
   try {
+    // Secret Header Authorization Check (x-board-key)
+    if (!isAuthorizedBoardRequest(req)) {
+      return NextResponse.json(
+        { error: "Unauthorized API Access", status: 401 },
+        { status: 401 }
+      );
+    }
+
     const token = process.env.VERCEL_API_TOKEN || process.env.GLOBAL_CONFIG_TOKEN || process.env.EDGE_CONFIG_TOKEN;
     const configId = process.env.GLOBAL_CONFIG_ID || process.env.EDGE_CONFIG_ID;
 
