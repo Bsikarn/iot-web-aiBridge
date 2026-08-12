@@ -9,22 +9,19 @@ export async function POST(req: Request) {
     }
 
     let combinedText = "";
-    const PDFParser = require("pdf2json");
 
     for (const file of files) {
       const fileName = file.name || "uploaded_document";
-      if (fileName.toLowerCase().endsWith('.txt')) {
+      const lowerName = fileName.toLowerCase();
+      
+      if (lowerName.endsWith('.txt') || lowerName.endsWith('.md')) {
         const textContent = await file.text();
         combinedText += `\n--- [DOCUMENT: ${fileName}] ---\n${textContent}\n`;
-      } else if (fileName.toLowerCase().endsWith('.pdf')) {
-        const buffer = Buffer.from(await file.arrayBuffer());
-        const pdfText = await new Promise<string>((resolve, reject) => {
-          const pdfParser = new PDFParser(null, 1);
-          pdfParser.on("pdfParser_dataError", (errData: any) => reject(errData.parserError || "PDF parsing failed"));
-          pdfParser.on("pdfParser_dataReady", () => resolve(pdfParser.getRawTextContent()));
-          pdfParser.parseBuffer(buffer);
-        });
-        combinedText += `\n--- [DOCUMENT: ${fileName}] ---\n${pdfText}\n`;
+      } else {
+        return NextResponse.json(
+          { error: `Unsupported file format: ${fileName}. Only .txt and .md files are allowed.` },
+          { status: 400 }
+        );
       }
     }
 

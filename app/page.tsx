@@ -62,9 +62,126 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
-  const [uploadingKb, setUploadingKb] = useState<{ [key: number]: boolean }>({});
   const [expandedHistory, setExpandedHistory] = useState<{ [key: number]: boolean }>({ 0: true });
   const [activeTab, setActiveTab] = useState<'prompts' | 'models' | 'kbs' | 'wifi' | 'history'>('prompts');
+
+  // Dashboard Access PIN Lock State
+  const [isUnlocked, setIsUnlocked] = useState(false);
+  const [pinInput, setPinInput] = useState("");
+  const [pinError, setPinError] = useState("");
+  const [showPin, setShowPin] = useState(false);
+
+  // Drag-and-Drop Knowledge Base Upload Modal State
+  const [kbModalIdx, setKbModalIdx] = useState<number | null>(null);
+  const [kbModalFile, setKbModalFile] = useState<File | null>(null);
+  const [kbModalText, setKbModalText] = useState<string>("");
+  const [kbModalError, setKbModalError] = useState<string>("");
+  const [isDragging, setIsDragging] = useState<boolean>(false);
+
+  // Check saved session unlock state on client mount
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const savedUnlocked = sessionStorage.getItem('dashboard_unlocked');
+      if (savedUnlocked === 'true') {
+        setIsUnlocked(true);
+      }
+    }
+  }, []);
+
+  const handleUnlock = (e: React.FormEvent) => {
+    e.preventDefault();
+    const dashboardPin = process.env.NEXT_PUBLIC_DASHBOARD_PIN || "1234";
+    if (pinInput.trim() === dashboardPin) {
+      if (typeof window !== 'undefined') {
+        sessionStorage.setItem('dashboard_unlocked', 'true');
+      }
+      setIsUnlocked(true);
+      setPinError("");
+      setPinInput("");
+    } else {
+      setPinError("Invalid PIN / Passcode. Please try again.");
+    }
+  };
+
+  const openKbModal = (idx: number) => {
+    setKbModalIdx(idx);
+    setKbModalFile(null);
+    setKbModalText("");
+    setKbModalError("");
+    setIsDragging(false);
+  };
+
+  const closeKbModal = () => {
+    setKbModalIdx(null);
+    setKbModalFile(null);
+    setKbModalText("");
+    setKbModalError("");
+    setIsDragging(false);
+  };
+
+  const processKbFile = (file: File) => {
+    const fileName = file.name.toLowerCase();
+    const isTxt = fileName.endsWith('.txt');
+    const isMd = fileName.endsWith('.md');
+    
+    if (!isTxt && !isMd) {
+      setKbModalError(`Unsupported file "${file.name}". Strictly only Plain Text (.txt) and Markdown (.md) files are allowed.`);
+      setKbModalFile(null);
+      setKbModalText("");
+      return;
+    }
+
+    setKbModalError("");
+    setKbModalFile(file);
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const text = e.target?.result as string || "";
+      setKbModalText(text);
+    };
+    reader.onerror = () => {
+      setKbModalError("Failed to read file content.");
+    };
+    reader.readAsText(file);
+  };
+
+  const handleKbFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (files && files.length > 0) {
+      processKbFile(files[0]);
+    }
+  };
+
+  const handleKbDrop = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    setIsDragging(false);
+    const files = e.dataTransfer.files;
+    if (files && files.length > 0) {
+      processKbFile(files[0]);
+    }
+  };
+
+  const handleKbDragOver = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    setIsDragging(true);
+  };
+
+  const handleKbDragLeave = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    setIsDragging(false);
+  };
+
+  const handleConfirmKbUpload = async () => {
+    if (kbModalIdx === null || !kbModalFile || !kbModalText) return;
+    
+    const formattedText = `\n--- [DOCUMENT: ${kbModalFile.name}] ---\n${kbModalText}\n`;
+    const updatedKbs = [...kbs];
+    updatedKbs[kbModalIdx] = (updatedKbs[kbModalIdx] || "") + formattedText;
+    
+    setKbs(updatedKbs);
+    closeKbModal();
+    await handleSave(prompts, updatedKbs, models, wifiNetworks);
+  };
 
   // Load configuration from settings API
   const loadSettings = async () => {
@@ -236,40 +353,6 @@ export default function Dashboard() {
     await handleSave(prompts, kbs, models, reordered);
   };
 
-  // Upload PDF/TXT file and append extracted text to Knowledge Base
-  const handleFileUpload = async (kbIdx: number, e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (!files || files.length === 0) return;
-
-    setUploadingKb(prev => ({ ...prev, [kbIdx]: true }));
-    const formData = new FormData();
-    for (let i = 0; i < files.length; i++) {
-      formData.append('files', files[i]);
-    }
-
-    try {
-      const res = await fetch('/api/parse', {
-        method: 'POST',
-        body: formData
-      });
-      const data = await res.json();
-
-      if (data.text) {
-        const newKbs = [...kbs];
-        newKbs[kbIdx] = (newKbs[kbIdx] || "") + data.text;
-        setKbs(newKbs);
-        await handleSave(prompts, newKbs, models, wifiNetworks);
-      } else {
-        alert("Failed to parse file: " + (data.error || "Unknown error"));
-      }
-    } catch (err) {
-      alert("Error uploading file. Please try again.");
-    } finally {
-      setUploadingKb(prev => ({ ...prev, [kbIdx]: false }));
-      e.target.value = '';
-    }
-  };
-
   // Clear Knowledge Base context
   const clearKb = async (kbIdx: number) => {
     if (confirm(`Are you sure you want to clear Knowledge Base #${kbIdx + 1}?`)) {
@@ -286,9 +369,13 @@ export default function Dashboard() {
 
   if (loading) {
     return (
-      <div className={`min-h-screen flex flex-col items-center justify-center bg-[#F0F7FF] ${inter.className}`}>
-        <div className="w-12 h-12 border-4 border-[#0D6EFD] border-t-transparent rounded-full animate-spin mb-4"></div>
-        <div className="font-semibold text-slate-700 tracking-wide animate-pulse">
+      <div className="min-h-screen flex flex-col items-center justify-center bg-[#E0E5EC] font-body text-slate-800">
+        <div className="w-16 h-16 rounded-3xl neu-pressed flex items-center justify-center text-slate-800 mb-4 animate-pulse">
+          <svg className="w-8 h-8 text-slate-800" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
+          </svg>
+        </div>
+        <div className="font-display font-extrabold text-sm text-slate-800 tracking-wider animate-pulse">
           INITIALIZING AI BRIDGE...
         </div>
       </div>
@@ -296,31 +383,33 @@ export default function Dashboard() {
   }
 
   return (
-    <div className={`min-h-screen bg-[#F0F7FF] text-slate-800 pb-16 ${inter.className}`}>
-      {/* Top Banner & Header */}
-      <header className="sticky top-0 z-30 bg-white/80 backdrop-blur-md border-b border-[#A3D8F4]/60 shadow-sm">
-        <div className="max-w-5xl mx-auto px-6 py-4 flex flex-col sm:flex-row justify-between items-center gap-4">
+    <div className={`min-h-screen bg-[#E0E5EC] text-slate-800 pb-16 font-body ${!isUnlocked ? 'pointer-events-none select-none overflow-hidden h-screen' : ''}`}>
+      {/* Neumorphic Header */}
+      <header className="sticky top-4 z-30 max-w-5xl mx-auto px-4">
+        <div className="neu-flat rounded-[32px] px-6 py-4 flex flex-col sm:flex-row justify-between items-center gap-4 bg-[#E0E5EC]">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-[#0D6EFD] to-[#A3D8F4] flex items-center justify-center text-white font-black text-xl shadow-md shadow-[#0D6EFD]/20">
-              ⚡
+            <div className="w-12 h-12 rounded-2xl neu-pressed flex items-center justify-center text-blue-600 bg-blue-500/10">
+              <svg className="w-6 h-6 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
+              </svg>
             </div>
             <div>
-              <h1 className="text-2xl font-black text-[#0D6EFD] tracking-tight">
-                AI <span className="font-light text-slate-700">BRIDGE</span>
+              <h1 className="text-xl font-display font-black text-slate-900 tracking-tight">
+                AI <span className="text-blue-600 font-black">BRIDGE</span>
               </h1>
-              <p className="text-[11px] text-slate-400 font-medium">
-                IoT AI Central Controller
+              <p className="text-[11px] text-slate-500 font-bold">
+                Minimal IoT Controller
               </p>
             </div>
           </div>
 
-          <div className="flex items-center gap-3">
-            <span className="text-[10px] font-bold text-blue-700 bg-blue-50 border border-blue-200 px-3 py-1.5 rounded-full flex items-center gap-1.5">
-              <span className="w-2 h-2 rounded-full bg-blue-500 animate-ping"></span>
+          <div className="flex flex-wrap items-center gap-3">
+            <span className="text-[10px] font-extrabold text-blue-700 neu-pressed-sm px-3.5 py-1.5 rounded-full flex items-center gap-2 bg-blue-50/80">
+              <span className="w-2 h-2 rounded-full bg-blue-600 animate-ping"></span>
               EDGE CONFIG ACTIVE
             </span>
-            <span className="text-[10px] font-bold text-indigo-700 bg-indigo-50 border border-indigo-200 px-3 py-1.5 rounded-full flex items-center gap-1.5">
-              <span className="w-2 h-2 rounded-full bg-indigo-500"></span>
+            <span className="text-[10px] font-extrabold text-emerald-700 neu-pressed-sm px-3.5 py-1.5 rounded-full flex items-center gap-2 bg-emerald-50/80">
+              <span className="w-2 h-2 rounded-full bg-emerald-600"></span>
               DISCORD WEBHOOK STORAGE
             </span>
             
@@ -328,10 +417,8 @@ export default function Dashboard() {
               id="save-settings-btn"
               onClick={() => handleSave()}
               disabled={saving}
-              className={`px-5 py-2 rounded-xl text-xs font-bold text-white shadow-md transition-all flex items-center gap-2 ${
-                saveSuccess
-                  ? 'bg-emerald-500 shadow-emerald-500/20'
-                  : 'bg-[#0D6EFD] hover:bg-[#0B5ED7] shadow-[#0D6EFD]/20 active:scale-95'
+              className={`neu-btn-primary px-5 py-2.5 rounded-2xl text-xs font-extrabold transition-all flex items-center gap-2 ${
+                saveSuccess ? 'bg-emerald-600' : ''
               } disabled:opacity-50`}
             >
               {saving ? (
@@ -359,68 +446,83 @@ export default function Dashboard() {
       {/* Main Content Container */}
       <main className="max-w-5xl mx-auto px-6 pt-8 space-y-8">
         
-        {/* Navigation Tabs */}
-        <div className="flex border-b border-slate-200 gap-2 overflow-x-auto pb-1">
+        {/* Neumorphic Navigation Tabs Track */}
+        <div className="neu-pressed p-2 rounded-[24px] flex gap-2 overflow-x-auto">
           <button
             onClick={() => setActiveTab('prompts')}
-            className={`px-5 py-2.5 rounded-t-xl font-bold text-xs transition-all flex items-center gap-2 ${
+            className={`px-5 py-2.5 rounded-xl font-extrabold text-xs transition-all flex items-center gap-2 ${
               activeTab === 'prompts'
-                ? 'bg-white text-[#0D6EFD] border-t-2 border-x border-[#0D6EFD] shadow-sm'
-                : 'text-slate-500 hover:text-slate-800 hover:bg-slate-100/50'
+                ? 'neu-flat text-blue-600 font-black ring-1 ring-blue-500/30'
+                : 'text-slate-600 hover:text-blue-600'
             }`}
           >
-            <span>📝 10 System Prompts</span>
-            <span className="bg-[#A3D8F4]/30 text-[#0D6EFD] text-[10px] px-2 py-0.5 rounded-full font-bold">10</span>
+            <svg className={`w-4 h-4 ${activeTab === 'prompts' ? 'text-blue-600' : 'text-slate-500'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+            </svg>
+            <span>10 System Prompts</span>
+            <span className="neu-pressed-sm text-blue-600 bg-blue-500/10 text-[10px] px-2 py-0.5 rounded-full font-black">10</span>
           </button>
 
           <button
             onClick={() => setActiveTab('models')}
-            className={`px-5 py-2.5 rounded-t-xl font-bold text-xs transition-all flex items-center gap-2 ${
+            className={`px-5 py-2.5 rounded-xl font-extrabold text-xs transition-all flex items-center gap-2 ${
               activeTab === 'models'
-                ? 'bg-white text-[#0D6EFD] border-t-2 border-x border-[#0D6EFD] shadow-sm'
-                : 'text-slate-500 hover:text-slate-800 hover:bg-slate-100/50'
+                ? 'neu-flat text-indigo-600 font-black ring-1 ring-indigo-500/30'
+                : 'text-slate-600 hover:text-indigo-600'
             }`}
           >
-            <span>🤖 10 AI Model Slots</span>
-            <span className="bg-[#A3D8F4]/30 text-[#0D6EFD] text-[10px] px-2 py-0.5 rounded-full font-bold">10 Slots</span>
+            <svg className={`w-4 h-4 ${activeTab === 'models' ? 'text-indigo-600' : 'text-slate-500'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M9 3v2m6-2v2M9 19v2m6-2v2M3 9h2m-2 6h2m14-6h2m-2 6h2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z" />
+            </svg>
+            <span>10 AI Model Slots</span>
+            <span className="neu-pressed-sm text-indigo-600 bg-indigo-500/10 text-[10px] px-2 py-0.5 rounded-full font-black">10 Slots</span>
           </button>
 
           <button
             onClick={() => setActiveTab('kbs')}
-            className={`px-5 py-2.5 rounded-t-xl font-bold text-xs transition-all flex items-center gap-2 ${
+            className={`px-5 py-2.5 rounded-xl font-extrabold text-xs transition-all flex items-center gap-2 ${
               activeTab === 'kbs'
-                ? 'bg-white text-[#0D6EFD] border-t-2 border-x border-[#0D6EFD] shadow-sm'
-                : 'text-slate-500 hover:text-slate-800 hover:bg-slate-100/50'
+                ? 'neu-flat text-teal-600 font-black ring-1 ring-teal-500/30'
+                : 'text-slate-600 hover:text-teal-600'
             }`}
           >
-            <span>📚 Knowledge Bases</span>
-            <span className="bg-[#A3D8F4]/30 text-[#0D6EFD] text-[10px] px-2 py-0.5 rounded-full font-bold">3 Slots</span>
+            <svg className={`w-4 h-4 ${activeTab === 'kbs' ? 'text-teal-600' : 'text-slate-500'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4" />
+            </svg>
+            <span>Knowledge Bases</span>
+            <span className="neu-pressed-sm text-teal-600 bg-teal-500/10 text-[10px] px-2 py-0.5 rounded-full font-black">3 Slots</span>
           </button>
 
           <button
             onClick={() => setActiveTab('wifi')}
-            className={`px-5 py-2.5 rounded-t-xl font-bold text-xs transition-all flex items-center gap-2 ${
+            className={`px-5 py-2.5 rounded-xl font-extrabold text-xs transition-all flex items-center gap-2 ${
               activeTab === 'wifi'
-                ? 'bg-white text-[#0D6EFD] border-t-2 border-x border-[#0D6EFD] shadow-sm'
-                : 'text-slate-500 hover:text-slate-800 hover:bg-slate-100/50'
+                ? 'neu-flat text-emerald-600 font-black ring-1 ring-emerald-500/30'
+                : 'text-slate-600 hover:text-emerald-600'
             }`}
           >
-            <span>📶 Wi-Fi Settings</span>
-            <span className="bg-emerald-100 text-emerald-700 text-[10px] px-2 py-0.5 rounded-full font-bold">
+            <svg className={`w-4 h-4 ${activeTab === 'wifi' ? 'text-emerald-600' : 'text-slate-500'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M8.111 16.404a5.5 5.5 0 017.778 0M12 20h.01m-7.08-7.071c3.904-3.905 10.236-3.905 14.141 0M1.394 9.393c5.857-5.857 15.355-5.857 21.213 0" />
+            </svg>
+            <span>Wi-Fi Settings</span>
+            <span className="neu-pressed-sm text-emerald-600 bg-emerald-500/10 text-[10px] px-2 py-0.5 rounded-full font-black">
               {wifiNetworks.length}
             </span>
           </button>
 
           <button
             onClick={() => setActiveTab('history')}
-            className={`px-5 py-2.5 rounded-t-xl font-bold text-xs transition-all flex items-center gap-2 ${
+            className={`px-5 py-2.5 rounded-xl font-extrabold text-xs transition-all flex items-center gap-2 ${
               activeTab === 'history'
-                ? 'bg-white text-[#0D6EFD] border-t-2 border-x border-[#0D6EFD] shadow-sm'
-                : 'text-slate-500 hover:text-slate-800 hover:bg-slate-100/50'
+                ? 'neu-flat text-amber-600 font-black ring-1 ring-amber-500/30'
+                : 'text-slate-600 hover:text-amber-600'
             }`}
           >
-            <span>📜 Answer History</span>
-            <span className="bg-amber-100 text-amber-700 text-[10px] px-2 py-0.5 rounded-full font-bold">
+            <svg className={`w-4 h-4 ${activeTab === 'history' ? 'text-amber-600' : 'text-slate-500'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <span>Answer History</span>
+            <span className="neu-pressed-sm text-amber-600 bg-amber-500/10 text-[10px] px-2 py-0.5 rounded-full font-black">
               {history.length}
             </span>
           </button>
@@ -428,30 +530,28 @@ export default function Dashboard() {
 
         {/* Tab 1: System Prompts (1 to 10) */}
         {activeTab === 'prompts' && (
-          <section className="space-y-4">
-            <div className="flex justify-between items-center">
-              <div>
-                <h2 className="text-lg font-extrabold text-slate-800">10 System Prompts</h2>
-                <p className="text-xs text-slate-400">
-                  Selectable by prompt_index (1 to 10) from the IoT calculator board.
-                </p>
-              </div>
+          <section className="space-y-6">
+            <div className="border-l-4 border-blue-600 pl-4 py-1">
+              <h2 className="text-xl font-display font-black text-slate-900">10 System Prompts</h2>
+              <p className="text-xs text-slate-600 font-medium">
+                Selectable by prompt_index (1 to 10) from the IoT calculator board.
+              </p>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               {prompts.map((pText, idx) => (
                 <div
                   key={idx}
-                  className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-[0_4px_20px_rgb(0,0,0,0.03)] hover:border-[#A3D8F4] transition-all"
+                  className="neu-flat p-6 rounded-[32px] space-y-3 transition-all hover:neu-flat-hover"
                 >
-                  <div className="flex justify-between items-center mb-2">
-                    <label className="text-xs font-bold text-[#0D6EFD] flex items-center gap-2">
-                      <span className="w-5 h-5 rounded-md bg-[#F0F7FF] border border-[#A3D8F4] flex items-center justify-center text-[10px]">
+                  <div className="flex justify-between items-center mb-1">
+                    <label className="text-xs font-black text-blue-600 flex items-center gap-2">
+                      <span className="w-7 h-7 rounded-xl neu-pressed flex items-center justify-center text-xs font-black text-blue-600 bg-blue-500/10">
                         #{idx + 1}
                       </span>
                       Prompt #{idx + 1}
                     </label>
-                    <span className="text-[10px] font-mono text-slate-400">
+                    <span className="text-[10px] font-mono font-bold text-slate-500 bg-slate-200/50 px-2 py-0.5 rounded-md">
                       {pText.length} chars
                     </span>
                   </div>
@@ -459,7 +559,7 @@ export default function Dashboard() {
                   <textarea
                     id={`prompt-input-${idx + 1}`}
                     rows={3}
-                    className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs outline-none focus:bg-white focus:border-[#0D6EFD] focus:ring-2 focus:ring-[#0D6EFD]/10 transition-all resize-y font-sans"
+                    className="w-full p-4 neu-pressed-deep rounded-2xl text-xs outline-none focus:ring-2 focus:ring-blue-500 font-body text-slate-900 font-medium placeholder-slate-400 transition-all resize-y"
                     placeholder={`Enter instruction for Prompt #${idx + 1}...`}
                     value={pText}
                     onChange={(e) => {
@@ -476,23 +576,23 @@ export default function Dashboard() {
 
         {/* Tab 2: 10 AI Model Slots (1 to 10) */}
         {activeTab === 'models' && (
-          <section className="space-y-4">
-            <div>
-              <h2 className="text-lg font-extrabold text-slate-800">10 AI Model Slots</h2>
-              <p className="text-xs text-slate-400">
+          <section className="space-y-6">
+            <div className="border-l-4 border-indigo-600 pl-4 py-1">
+              <h2 className="text-xl font-display font-black text-slate-900">10 AI Model Slots</h2>
+              <p className="text-xs text-slate-600 font-medium">
                 Selectable by ai_index (1 to 10) from the IoT calculator board.
               </p>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               {models.map((mText, idx) => (
                 <div
                   key={idx}
-                  className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-[0_4px_20px_rgb(0,0,0,0.03)] hover:border-[#A3D8F4] transition-all space-y-3"
+                  className="neu-flat p-6 rounded-[32px] space-y-3 transition-all hover:neu-flat-hover"
                 >
                   <div className="flex justify-between items-center">
-                    <label className="text-xs font-bold text-[#0D6EFD] flex items-center gap-2">
-                      <span className="w-5 h-5 rounded-md bg-[#F0F7FF] border border-[#A3D8F4] flex items-center justify-center text-[10px]">
+                    <label className="text-xs font-black text-indigo-600 flex items-center gap-2">
+                      <span className="w-7 h-7 rounded-xl neu-pressed flex items-center justify-center text-xs font-black text-indigo-600 bg-indigo-500/10">
                         #{idx + 1}
                       </span>
                       Model Slot #{idx + 1}
@@ -504,7 +604,7 @@ export default function Dashboard() {
                         updated[idx] = PRESET_MODELS[idx] || PRESET_MODELS[0];
                         setModels(updated);
                       }}
-                      className="text-[10px] text-slate-400 hover:text-[#0D6EFD] underline"
+                      className="text-[10px] text-indigo-600 font-bold hover:underline transition-colors"
                     >
                       Reset Preset
                     </button>
@@ -513,7 +613,7 @@ export default function Dashboard() {
                   <input
                     id={`model-input-${idx + 1}`}
                     type="text"
-                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs outline-none focus:bg-white focus:border-[#0D6EFD] focus:ring-2 focus:ring-[#0D6EFD]/10 font-mono transition-all"
+                    className="w-full px-4 py-3 neu-pressed-deep rounded-2xl text-xs outline-none focus:ring-2 focus:ring-indigo-500 font-mono font-bold text-slate-900 placeholder-slate-400 transition-all"
                     placeholder={`e.g. google/gemini-2.5-flash`}
                     value={mText}
                     onChange={(e) => {
@@ -523,9 +623,9 @@ export default function Dashboard() {
                     }}
                   />
                   
-                  <div className="flex justify-between items-center text-[10px] text-slate-400">
+                  <div className="flex justify-between items-center text-[10px] text-slate-600 font-medium">
                     <span>Target Model string for OpenRouter</span>
-                    <span className="font-mono bg-slate-100 px-1.5 py-0.5 rounded">ai_index={idx + 1}</span>
+                    <span className="font-mono font-bold text-indigo-600 bg-indigo-500/10 neu-pressed-sm px-2 py-0.5 rounded-md">ai_index={idx + 1}</span>
                   </div>
                 </div>
               ))}
@@ -535,11 +635,11 @@ export default function Dashboard() {
 
         {/* Tab 3: Knowledge Base Contexts (1 to 3) */}
         {activeTab === 'kbs' && (
-          <section className="space-y-4">
-            <div>
-              <h2 className="text-lg font-extrabold text-slate-800">3 Knowledge Base Contexts</h2>
-              <p className="text-xs text-slate-400">
-                Upload PDF or TXT documents to append context into Knowledge Base slots (kb_index 1 to 3).
+          <section className="space-y-6">
+            <div className="border-l-4 border-teal-600 pl-4 py-1">
+              <h2 className="text-xl font-display font-black text-slate-900">3 Knowledge Base Contexts</h2>
+              <p className="text-xs text-slate-600 font-medium">
+                Upload plain text (.txt) or Markdown (.md) documents to append context into Knowledge Base slots (kb_index 1 to 3).
               </p>
             </div>
 
@@ -547,18 +647,18 @@ export default function Dashboard() {
               {kbs.map((kbText, idx) => (
                 <div
                   key={idx}
-                  className="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-[0_4px_20px_rgb(0,0,0,0.03)] space-y-4"
+                  className="neu-flat p-8 rounded-[32px] space-y-4 transition-all hover:neu-flat-hover"
                 >
-                  <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 pb-3 border-b border-slate-100">
-                    <div className="flex items-center gap-2">
-                      <span className="w-7 h-7 rounded-lg bg-[#0D6EFD] text-white font-bold text-xs flex items-center justify-center shadow-sm">
+                  <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 pb-4 border-b border-slate-300/40">
+                    <div className="flex items-center gap-3">
+                      <span className="w-9 h-9 rounded-2xl neu-pressed text-teal-600 font-black text-sm flex items-center justify-center bg-teal-500/10">
                         {idx + 1}
                       </span>
                       <div>
-                        <h3 className="text-sm font-bold text-slate-800">
+                        <h3 className="text-base font-black text-teal-700 font-display">
                           Document Context #{idx + 1}
                         </h3>
-                        <p className="text-[11px] text-slate-400">
+                        <p className="text-[11px] text-slate-600 font-bold">
                           Mapped to kb_index = {idx + 1}
                         </p>
                       </div>
@@ -566,11 +666,11 @@ export default function Dashboard() {
 
                     <div className="flex items-center gap-3">
                       {kbText ? (
-                        <span className="text-[11px] font-semibold text-emerald-600 bg-emerald-50 border border-emerald-200 px-3 py-1 rounded-full">
+                        <span className="text-[11px] font-black text-teal-700 neu-pressed-sm px-3.5 py-1.5 rounded-full bg-teal-50/80">
                           ✓ {kbText.length.toLocaleString()} characters stored
                         </span>
                       ) : (
-                        <span className="text-[11px] font-medium text-slate-400 bg-slate-100 px-3 py-1 rounded-full">
+                        <span className="text-[11px] font-bold text-slate-500 neu-pressed-sm px-3.5 py-1.5 rounded-full">
                           Empty Context
                         </span>
                       )}
@@ -580,8 +680,8 @@ export default function Dashboard() {
                   <textarea
                     id={`kb-input-${idx + 1}`}
                     rows={6}
-                    className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl text-xs outline-none focus:bg-white focus:border-[#0D6EFD] focus:ring-2 focus:ring-[#0D6EFD]/10 transition-all font-mono leading-relaxed"
-                    placeholder={`Knowledge Base #{idx + 1} text content...`}
+                    className="w-full p-4 neu-pressed-deep rounded-2xl text-xs outline-none focus:ring-2 focus:ring-teal-500 transition-all font-mono leading-relaxed text-slate-900 font-medium placeholder-slate-400"
+                    placeholder={`Knowledge Base #${idx + 1} text content...`}
                     value={kbText}
                     onChange={(e) => {
                       const updated = [...kbs];
@@ -590,30 +690,27 @@ export default function Dashboard() {
                     }}
                   />
 
-                  <div className="flex flex-col sm:flex-row gap-3 pt-2">
-                    <label className={`flex-1 cursor-pointer flex items-center justify-center gap-2 px-4 py-2.5 border border-dashed rounded-xl text-xs font-semibold transition-all ${
-                      uploadingKb[idx]
-                        ? 'border-slate-300 bg-slate-100 text-slate-400 cursor-not-allowed'
-                        : 'border-[#0D6EFD] bg-[#F0F7FF] text-[#0D6EFD] hover:bg-[#0D6EFD] hover:text-white'
-                    }`}>
-                      <input
-                        type="file"
-                        accept=".txt,.pdf"
-                        multiple
-                        disabled={uploadingKb[idx]}
-                        onChange={(e) => handleFileUpload(idx, e)}
-                        className="hidden"
-                      />
-                      <span>{uploadingKb[idx] ? '⏳ Extracting document text...' : '📁 + Upload .txt / .pdf documents'}</span>
-                    </label>
+                  <div className="flex flex-col sm:flex-row gap-4 pt-2">
+                    <button
+                      type="button"
+                      onClick={() => openKbModal(idx)}
+                      className="neu-btn-secondary flex-1 px-5 py-3 rounded-2xl text-xs font-extrabold text-teal-700 hover:text-teal-800 flex items-center justify-center gap-2 border-teal-500/30"
+                    >
+                      <svg className="w-4 h-4 text-teal-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+                      </svg>
+                      <span>Upload Drag & Drop (.txt / .md)</span>
+                    </button>
 
                     {kbText && (
                       <button
                         onClick={() => clearKb(idx)}
-                        disabled={uploadingKb[idx]}
-                        className="px-4 py-2.5 bg-red-50 text-red-600 border border-red-200 hover:bg-red-600 hover:text-white rounded-xl text-xs font-semibold transition-all disabled:opacity-50"
+                        className="neu-pressed px-5 py-3 rounded-2xl text-xs font-bold text-red-600 hover:text-red-700 transition-all flex items-center gap-1.5"
                       >
-                        🗑️ Clear KB #{idx + 1}
+                        <svg className="w-3.5 h-3.5 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        </svg>
+                        <span>Clear KB #{idx + 1}</span>
                       </button>
                     )}
                   </div>
@@ -626,67 +723,70 @@ export default function Dashboard() {
         {/* Tab 4: Wi-Fi Management & Hardware Sync */}
         {activeTab === 'wifi' && (
           <section className="space-y-6">
-            <div>
-              <h2 className="text-lg font-extrabold text-slate-800">IoT Board Wi-Fi Profiles</h2>
-              <p className="text-xs text-slate-400">
-                Configure priority-ordered Wi-Fi networks for your IoT board (Raspberry Pi). The hardware pulls these profiles via GET /api/wifi-settings during network sync.
+            <div className="border-l-4 border-emerald-600 pl-4 py-1">
+              <h2 className="text-xl font-display font-black text-slate-900">IoT Board Wi-Fi Profiles</h2>
+              <p className="text-xs text-slate-600 font-medium">
+                Configure priority-ordered Wi-Fi networks for your IoT board. Hardware pulls profiles via GET /api/wifi-settings.
               </p>
             </div>
 
             {/* Add New Wi-Fi Form */}
-            <form onSubmit={handleAddWifi} className="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-[0_4px_20px_rgb(0,0,0,0.03)] space-y-4">
-              <h3 className="text-xs font-bold text-[#0D6EFD] uppercase tracking-wider flex items-center gap-2">
-                <span>➕ Add New Wi-Fi Profile</span>
+            <form onSubmit={handleAddWifi} className="neu-flat p-8 rounded-[32px] space-y-4">
+              <h3 className="text-xs font-black text-emerald-600 uppercase tracking-wider flex items-center gap-2">
+                <svg className="w-4 h-4 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+                </svg>
+                <span>Add New Wi-Fi Profile</span>
               </h3>
 
               <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                <div className="space-y-1">
-                  <label className="text-[11px] font-bold text-slate-700">SSID (Network Name)*</label>
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-black text-slate-900">SSID (Network Name)*</label>
                   <input
                     type="text"
                     required
                     placeholder="e.g. Home_WiFi"
                     value={newSsid}
                     onChange={(e) => setNewSsid(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs outline-none focus:bg-white focus:border-[#0D6EFD] font-mono"
+                    className="w-full px-4 py-3 neu-pressed-deep rounded-2xl text-xs outline-none focus:ring-2 focus:ring-emerald-500 font-mono font-bold text-slate-900 placeholder-slate-400"
                   />
                 </div>
 
-                <div className="space-y-1">
-                  <label className="text-[11px] font-bold text-slate-700">Password</label>
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-black text-slate-900">Password</label>
                   <input
                     type="password"
                     placeholder="WPA2/WPA3 password"
                     value={newPassword}
                     onChange={(e) => setNewPassword(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs outline-none focus:bg-white focus:border-[#0D6EFD] font-mono"
+                    className="w-full px-4 py-3 neu-pressed-deep rounded-2xl text-xs outline-none focus:ring-2 focus:ring-emerald-500 font-mono font-bold text-slate-900 placeholder-slate-400"
                   />
                 </div>
 
-                <div className="space-y-1">
-                  <label className="text-[11px] font-bold text-slate-700">Username (Optional)</label>
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-black text-slate-900">Username (Optional)</label>
                   <input
                     type="text"
                     placeholder="Enterprise login if needed"
                     value={newUsername}
                     onChange={(e) => setNewUsername(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs outline-none focus:bg-white focus:border-[#0D6EFD] font-mono"
+                    className="w-full px-4 py-3 neu-pressed-deep rounded-2xl text-xs outline-none focus:ring-2 focus:ring-emerald-500 font-mono font-bold text-slate-900 placeholder-slate-400"
                   />
                 </div>
 
-                <div className="space-y-1">
-                  <label className="text-[11px] font-bold text-slate-700">Priority (1 = Highest)</label>
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-black text-slate-900">Priority (1 = Highest)</label>
                   <div className="flex gap-2">
                     <input
                       type="number"
                       min={1}
                       value={newPriority}
                       onChange={(e) => setNewPriority(parseInt(e.target.value, 10) || 1)}
-                      className="w-20 px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs outline-none focus:bg-white focus:border-[#0D6EFD] font-mono"
+                      className="w-20 px-3 py-3 neu-pressed-deep rounded-2xl text-xs outline-none focus:ring-2 focus:ring-emerald-500 font-mono font-bold text-slate-900"
                     />
                     <button
                       type="submit"
-                      className="flex-1 bg-[#0D6EFD] hover:bg-[#0B5ED7] text-white font-bold text-xs rounded-xl px-4 py-2 shadow-md shadow-[#0D6EFD]/20 transition-all active:scale-95"
+                      className="flex-1 neu-btn-primary bg-emerald-600 hover:bg-emerald-700 rounded-2xl px-4 py-3 text-xs font-black"
                     >
                       + Add Wi-Fi
                     </button>
@@ -695,14 +795,14 @@ export default function Dashboard() {
               </div>
             </form>
 
-            {/* List of Configured Wi-Fi Networks with Secure Status & Password Overwrite */}
-            <div className="space-y-3">
-              <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider">
+            {/* List of Configured Wi-Fi Networks */}
+            <div className="space-y-4">
+              <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider">
                 Configured Network Profiles (Sorted by Connection Priority)
               </h3>
 
               {wifiNetworks.length === 0 ? (
-                <div className="bg-white p-8 text-center rounded-2xl border border-slate-200/80 text-xs text-slate-400">
+                <div className="neu-pressed p-8 text-center rounded-[32px] text-xs text-slate-500">
                   No Wi-Fi profiles configured yet. Add one using the form above.
                 </div>
               ) : (
@@ -710,32 +810,38 @@ export default function Dashboard() {
                   {wifiNetworks.map((net, idx) => (
                     <div
                       key={net.id || idx}
-                      className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm hover:border-[#A3D8F4] transition-all space-y-4"
+                      className="neu-flat p-6 rounded-[32px] space-y-4 transition-all hover:neu-flat-hover"
                     >
-                      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
+                      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 pb-3">
                         <div className="flex items-center gap-3">
-                          <span className="w-8 h-8 rounded-xl bg-emerald-50 text-emerald-700 font-extrabold text-xs flex items-center justify-center border border-emerald-200">
+                          <span className="w-9 h-9 rounded-2xl neu-pressed text-teal-700 font-black text-xs flex items-center justify-center">
                             #{net.priority}
                           </span>
                           <div>
                             <div className="flex items-center gap-2">
                               <span className="text-sm font-bold text-slate-800 font-mono">{net.ssid}</span>
                               {net.password && net.password.length > 0 ? (
-                                <span className="bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-0.5 rounded-md font-mono text-[10px]">
-                                  🔒 Password Saved
+                                <span className="neu-pressed-sm text-teal-700 px-2.5 py-0.5 rounded-full font-mono text-[10px] font-bold flex items-center gap-1">
+                                  <svg className="w-3 h-3 text-teal-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                                  </svg>
+                                  Password Saved
                                 </span>
                               ) : (
-                                <span className="bg-slate-100 text-slate-500 border border-slate-200 px-2 py-0.5 rounded-md font-mono text-[10px]">
-                                  🔓 Open Network (No Password)
+                                <span className="neu-pressed-sm text-slate-500 px-2.5 py-0.5 rounded-full font-mono text-[10px] flex items-center gap-1">
+                                  <svg className="w-3 h-3 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M8 11V7a4 4 0 118 0m-4 8v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2z" />
+                                  </svg>
+                                  Open Network (No Password)
                                 </span>
                               )}
                               {net.username && (
-                                <span className="bg-purple-50 text-purple-700 border border-purple-200 px-2 py-0.5 rounded-md font-mono text-[10px]">
+                                <span className="neu-pressed-sm text-slate-700 px-2.5 py-0.5 rounded-full font-mono text-[10px] font-bold">
                                   Enterprise ({net.username})
                                 </span>
                               )}
                             </div>
-                            <p className="text-[10px] font-mono text-slate-400 mt-0.5">
+                            <p className="text-[10px] font-mono text-slate-500 mt-0.5">
                               Priority Level #{net.priority}
                             </p>
                           </div>
@@ -746,58 +852,67 @@ export default function Dashboard() {
                             type="button"
                             onClick={() => handleMovePriority(idx, 'up')}
                             disabled={idx === 0}
-                            className="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-bold transition-all disabled:opacity-30"
+                            className="neu-btn-secondary px-3 py-1.5 rounded-xl text-xs font-bold disabled:opacity-30 flex items-center gap-1"
                             title="Move Priority Up"
                           >
-                            ⬆️ Up
+                            <svg className="w-3 h-3 text-slate-700" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M5 15l7-7 7 7" />
+                            </svg>
+                            <span>Up</span>
                           </button>
                           <button
                             type="button"
                             onClick={() => handleMovePriority(idx, 'down')}
                             disabled={idx === wifiNetworks.length - 1}
-                            className="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-bold transition-all disabled:opacity-30"
+                            className="neu-btn-secondary px-3 py-1.5 rounded-xl text-xs font-bold disabled:opacity-30 flex items-center gap-1"
                             title="Move Priority Down"
                           >
-                            ⬇️ Down
+                            <svg className="w-3 h-3 text-slate-700" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+                            </svg>
+                            <span>Down</span>
                           </button>
                           <button
                             type="button"
                             onClick={() => handleDeleteWifi(net.id)}
-                            className="px-3 py-1.5 bg-red-50 hover:bg-red-600 hover:text-white text-red-600 rounded-lg text-xs font-bold transition-all border border-red-200"
+                            className="neu-pressed px-3 py-1.5 rounded-xl text-xs font-bold text-red-500 hover:text-red-600 transition-all flex items-center gap-1"
                           >
-                            🗑️ Delete
+                            <svg className="w-3.5 h-3.5 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                            </svg>
+                            <span>Delete</span>
                           </button>
                         </div>
                       </div>
 
                       {/* Inputs for SSID, Password Overwrite, and Username */}
                       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                        <div className="space-y-1">
-                          <label className="text-[11px] font-bold text-slate-700">SSID (Network Name)</label>
+                        <div className="space-y-1.5">
+                          <label className="text-[11px] font-bold text-slate-800">SSID (Network Name)</label>
                           <input
                             type="text"
-                            className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs outline-none focus:bg-white focus:border-[#0D6EFD] font-mono"
+                            className="w-full px-4 py-3 neu-pressed-deep rounded-2xl text-xs outline-none focus:ring-2 focus:ring-slate-400 font-mono text-slate-800"
                             value={net.ssid}
                             onChange={(e) => handleUpdateWifiNetwork(idx, 'ssid', e.target.value)}
                             placeholder="Network SSID"
                           />
                         </div>
 
-                        <div className="space-y-1">
-                          <label className="text-[11px] font-bold text-slate-700">Set/Update Password</label>
+                        <div className="space-y-1.5">
+                          <label className="text-[11px] font-bold text-slate-800">Set/Update Password</label>
                           <input
                             type="password"
-                            className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs outline-none focus:bg-white focus:border-[#0D6EFD] font-mono"
+                            className="w-full px-4 py-3 neu-pressed-deep rounded-2xl text-xs outline-none focus:ring-2 focus:ring-slate-400 font-mono text-slate-800"
                             onChange={(e) => handleUpdateWifiNetwork(idx, 'password', e.target.value)}
                             placeholder={net.password && net.password.length > 0 ? "Type new password to overwrite" : "Enter network password"}
                           />
                         </div>
 
-                        <div className="space-y-1">
-                          <label className="text-[11px] font-bold text-slate-700">Username (Optional)</label>
+                        <div className="space-y-1.5">
+                          <label className="text-[11px] font-bold text-slate-800">Username (Optional)</label>
                           <input
                             type="text"
-                            className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs outline-none focus:bg-white focus:border-[#0D6EFD] font-mono"
+                            className="w-full px-4 py-3 neu-pressed-deep rounded-2xl text-xs outline-none focus:ring-2 focus:ring-slate-400 font-mono text-slate-800"
                             value={net.username || ''}
                             onChange={(e) => handleUpdateWifiNetwork(idx, 'username', e.target.value)}
                             placeholder="Enterprise login username"
@@ -814,19 +929,22 @@ export default function Dashboard() {
 
         {/* Tab 5: Latest Answers History Log (Max 3 records) */}
         {activeTab === 'history' && (
-          <section className="space-y-4">
+          <section className="space-y-6">
             <div>
-              <h2 className="text-lg font-extrabold text-slate-800">Latest Answers History Log</h2>
-              <p className="text-xs text-slate-400">
+              <h2 className="text-lg font-display font-extrabold text-slate-800">Latest Answers History Log</h2>
+              <p className="text-xs text-slate-500">
                 Displays the 3 most recent answers returned to the IoT calculator.
               </p>
             </div>
 
             {history.length === 0 ? (
-              <div className="bg-white p-12 text-center rounded-2xl border border-slate-200/80 space-y-2">
-                <div className="text-3xl">📷</div>
-                <p className="text-sm font-semibold text-slate-600">No snapshots recorded yet</p>
-                <p className="text-xs text-slate-400">
+              <div className="neu-pressed p-12 text-center rounded-[32px] space-y-2">
+                <svg className="w-8 h-8 text-slate-400 mx-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+                </svg>
+                <p className="text-sm font-semibold text-slate-800">No snapshots recorded yet</p>
+                <p className="text-xs text-slate-500">
                   Send an image from your IoT calculator board to populate answer history.
                 </p>
               </div>
@@ -835,17 +953,17 @@ export default function Dashboard() {
                 {history.map((record, idx) => (
                   <div
                     key={idx}
-                    className="bg-white rounded-2xl border border-slate-200/80 shadow-[0_4px_20px_rgb(0,0,0,0.03)] overflow-hidden transition-all hover:border-[#A3D8F4]"
+                    className="neu-flat rounded-[32px] overflow-hidden transition-all hover:neu-flat-hover"
                   >
                     <button
                       onClick={() => toggleHistoryItem(idx)}
-                      className="w-full p-5 text-left flex justify-between items-center bg-white hover:bg-slate-50/80 transition-colors"
+                      className="w-full p-6 text-left flex justify-between items-center bg-[#E0E5EC] transition-colors"
                     >
                       <div className="flex items-center gap-3">
-                        <span className="w-6 h-6 rounded-md bg-[#F0F7FF] text-[#0D6EFD] font-bold text-xs flex items-center justify-center border border-[#A3D8F4]">
+                        <span className="w-7 h-7 rounded-xl neu-pressed text-slate-800 font-bold text-xs flex items-center justify-center">
                           #{idx + 1}
                         </span>
-                        <span className="text-xs font-bold text-slate-800 uppercase tracking-wider bg-slate-100 px-2.5 py-1 rounded-md font-mono">
+                        <span className="text-xs font-bold text-slate-800 uppercase tracking-wider neu-pressed-sm px-3 py-1 rounded-full font-mono">
                           {record.model || record.provider || 'AI Model'}
                         </span>
                         <span className="text-xs font-medium text-slate-500">
@@ -854,11 +972,11 @@ export default function Dashboard() {
                       </div>
 
                       <div className="flex items-center gap-3">
-                        <span className="text-[11px] text-slate-400 font-mono">
+                        <span className="text-[11px] text-slate-500 font-mono">
                           {new Date(record.timestamp).toLocaleString()}
                         </span>
                         <svg
-                          className={`w-4 h-4 text-slate-400 transition-transform ${expandedHistory[idx] ? 'rotate-180' : ''}`}
+                          className={`w-4 h-4 text-slate-500 transition-transform ${expandedHistory[idx] ? 'rotate-180' : ''}`}
                           fill="none"
                           viewBox="0 0 24 24"
                           stroke="currentColor"
@@ -869,7 +987,7 @@ export default function Dashboard() {
                     </button>
 
                     {expandedHistory[idx] && (
-                      <div className="p-5 border-t border-slate-100 bg-slate-50/50 flex flex-col md:flex-row gap-5">
+                      <div className="p-6 pt-0 flex flex-col md:flex-row gap-6">
                         {record.imageUrl && (
                           <div className="flex-shrink-0">
                             <a
@@ -881,9 +999,9 @@ export default function Dashboard() {
                               <img
                                 src={record.imageUrl}
                                 alt="Snap Preview"
-                                className="w-28 h-28 object-cover rounded-xl border border-slate-200 shadow-sm group-hover:opacity-95 transition-opacity"
+                                className="w-28 h-28 object-cover rounded-2xl neu-pressed p-1 group-hover:scale-[1.02] transition-transform"
                               />
-                              <span className="absolute bottom-1 right-1 bg-black/60 text-white text-[9px] px-1.5 py-0.5 rounded font-mono">
+                              <span className="absolute bottom-2 right-2 bg-slate-800/80 text-white text-[9px] px-1.5 py-0.5 rounded font-mono">
                                 Discord CDN
                               </span>
                             </a>
@@ -891,10 +1009,10 @@ export default function Dashboard() {
                         )}
 
                         <div className="flex-1 space-y-2">
-                          <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+                          <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
                             AI Answer Response
                           </p>
-                          <div className="p-4 bg-white rounded-xl border border-slate-200 text-xs text-slate-700 whitespace-pre-wrap leading-relaxed font-sans shadow-inner">
+                          <div className="p-5 neu-pressed-deep rounded-2xl text-xs text-slate-800 whitespace-pre-wrap leading-relaxed font-body">
                             {record.aiResponse}
                           </div>
                         </div>
@@ -915,6 +1033,236 @@ export default function Dashboard() {
           AI BRIDGE // 10 PROMPTS • 10 AI MODELS • 3 KNOWLEDGE BASES • WI-FI SYNC
         </p>
       </footer>
+
+      {/* Neumorphic Drag-and-Drop KB Upload Modal */}
+      {kbModalIdx !== null && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-md p-4 pointer-events-auto">
+          <div className="neu-flat rounded-[32px] p-8 max-w-xl w-full bg-[#E0E5EC] space-y-6 relative">
+            {/* Modal Header */}
+            <div className="flex justify-between items-center pb-4 border-b border-slate-300/40">
+              <div className="flex items-center gap-3">
+                <span className="w-10 h-10 rounded-2xl neu-pressed text-slate-800 font-black text-base flex items-center justify-center">
+                  <svg className="w-5 h-5 text-slate-800" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                  </svg>
+                </span>
+                <div>
+                  <h3 className="text-base font-display font-extrabold text-slate-800">
+                    Upload Document to KB #{kbModalIdx + 1}
+                  </h3>
+                  <p className="text-[11px] text-slate-500">
+                    Select or drag-and-drop plain text (.txt) or Markdown (.md) files.
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={closeKbModal}
+                className="w-9 h-9 rounded-2xl neu-btn-secondary text-slate-500 hover:text-slate-800 font-bold text-sm flex items-center justify-center"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Dropzone Area */}
+            <div
+              onDragOver={handleKbDragOver}
+              onDragLeave={handleKbDragLeave}
+              onDrop={handleKbDrop}
+              onClick={() => document.getElementById('kb-file-picker-input')?.click()}
+              className={`neu-pressed-deep rounded-[24px] p-8 text-center transition-all flex flex-col items-center justify-center gap-4 cursor-pointer ${
+                isDragging
+                  ? 'ring-2 ring-slate-800 scale-[1.01]'
+                  : kbModalFile
+                  ? 'ring-2 ring-teal-600'
+                  : 'hover:neu-pressed'
+              }`}
+            >
+              <input
+                id="kb-file-picker-input"
+                type="file"
+                accept=".txt, .md, text/plain, text/markdown"
+                onChange={handleKbFileSelect}
+                className="hidden"
+              />
+
+              <div className={`w-14 h-14 rounded-2xl neu-flat flex items-center justify-center text-2xl transition-all ${
+                isDragging ? 'text-slate-900 scale-110' : 'text-slate-800'
+              }`}>
+                <svg className="w-6 h-6 text-slate-800" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
+                </svg>
+              </div>
+
+              <div>
+                <p className="text-xs font-extrabold text-slate-800 font-display">
+                  {isDragging ? "Drop your file here to upload" : "Drag & Drop your .txt or .md file here"}
+                </p>
+                <p className="text-[11px] text-slate-500 mt-1">
+                  Strictly Plain Text (.txt) or Markdown (.md) documents
+                </p>
+              </div>
+
+              <span className="neu-btn-secondary px-5 py-2 rounded-2xl text-[11px] font-bold">
+                Browse Files
+              </span>
+            </div>
+
+            {/* Error Toast / Alert Box */}
+            {kbModalError && (
+              <div className="p-4 neu-pressed rounded-2xl text-red-500 text-xs flex items-center gap-2 font-bold">
+                <svg className="w-4 h-4 text-red-500 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+                <span className="flex-1">{kbModalError}</span>
+              </div>
+            )}
+
+            {/* Selected File Details Preview */}
+            {kbModalFile && !kbModalError && (
+              <div className="p-5 neu-pressed rounded-2xl space-y-3">
+                <div className="flex justify-between items-center text-xs font-bold text-slate-800">
+                  <span className="flex items-center gap-2">
+                    <svg className="w-4 h-4 text-slate-700" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
+                    </svg>
+                    <span>File Selected</span>
+                  </span>
+                  <span className="text-[10px] text-teal-700 neu-pressed-sm px-2.5 py-0.5 rounded-full font-mono font-bold">
+                    ✓ Ready to upload
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-3 gap-3 text-[11px]">
+                  <div className="neu-flat p-3 rounded-xl">
+                    <span className="block text-[10px] text-slate-500 font-medium">File Name</span>
+                    <span className="font-mono font-bold text-slate-800 truncate block" title={kbModalFile.name}>
+                      {kbModalFile.name}
+                    </span>
+                  </div>
+                  <div className="neu-flat p-3 rounded-xl">
+                    <span className="block text-[10px] text-slate-500 font-medium">File Size</span>
+                    <span className="font-mono font-bold text-slate-800 block">
+                      {(kbModalFile.size / 1024).toFixed(1)} KB
+                    </span>
+                  </div>
+                  <div className="neu-flat p-3 rounded-xl">
+                    <span className="block text-[10px] text-slate-500 font-medium">File Type</span>
+                    <span className="font-mono font-bold text-slate-800 uppercase block">
+                      {kbModalFile.name.split('.').pop() || 'TXT'}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Text Preview Snippet */}
+                {kbModalText && (
+                  <div className="space-y-1">
+                    <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                      Content Preview ({kbModalText.length.toLocaleString()} chars)
+                    </span>
+                    <div className="p-3.5 neu-pressed-deep rounded-xl text-[11px] font-mono text-slate-800 max-h-28 overflow-y-auto leading-relaxed whitespace-pre-wrap">
+                      {kbModalText.slice(0, 300)}
+                      {kbModalText.length > 300 && "..."}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Modal Footer Controls */}
+            <div className="flex justify-end items-center gap-3 pt-3">
+              <button
+                type="button"
+                onClick={closeKbModal}
+                className="neu-btn-secondary px-5 py-2.5 rounded-2xl text-xs font-bold"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmKbUpload}
+                disabled={!kbModalFile || !kbModalText || !!kbModalError}
+                className="neu-btn-primary px-6 py-2.5 rounded-2xl text-xs font-extrabold disabled:opacity-40"
+              >
+                <span>Confirm Upload</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Dashboard Access PIN Lock Overlay */}
+      {!isUnlocked && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-md p-4 pointer-events-auto">
+          <div className="neu-flat rounded-[32px] p-8 max-w-md w-full text-center space-y-6 relative bg-[#E0E5EC]">
+            <div className="w-16 h-16 rounded-3xl neu-pressed flex items-center justify-center text-slate-800 text-3xl mx-auto shadow-inner">
+              <svg className="w-8 h-8 text-slate-800" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+              </svg>
+            </div>
+
+            <div className="space-y-1.5">
+              <h2 className="text-xl font-display font-extrabold text-slate-800 tracking-tight">
+                Dashboard Access Lock
+              </h2>
+              <p className="text-xs text-slate-500 max-w-xs mx-auto">
+                Enter your access PIN / passcode to manage system prompts, AI models, and IoT settings.
+              </p>
+            </div>
+
+            <form onSubmit={handleUnlock} className="space-y-4 text-left">
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-slate-800 flex justify-between items-center">
+                  <span>Access PIN / Passcode</span>
+                  <button
+                    type="button"
+                    onClick={() => setShowPin(!showPin)}
+                    className="text-[11px] text-slate-600 font-semibold hover:underline"
+                  >
+                    {showPin ? "Hide" : "Show"}
+                  </button>
+                </label>
+
+                <div className="relative">
+                  <input
+                    type={showPin ? "text" : "password"}
+                    required
+                    autoFocus
+                    placeholder="Enter PIN..."
+                    value={pinInput}
+                    onChange={(e) => {
+                      setPinInput(e.target.value);
+                      if (pinError) setPinError("");
+                    }}
+                    className="w-full px-5 py-3.5 neu-pressed-deep rounded-2xl text-sm font-mono tracking-widest outline-none focus:ring-2 focus:ring-slate-400 text-slate-800 placeholder-slate-400 transition-all"
+                  />
+                </div>
+              </div>
+
+              {pinError && (
+                <div className="p-3.5 neu-pressed rounded-2xl text-red-500 text-xs font-bold flex items-center gap-2">
+                  <svg className="w-4 h-4 text-red-500 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  <span>{pinError}</span>
+                </div>
+              )}
+
+              <button
+                type="submit"
+                className="w-full neu-btn-primary py-3.5 rounded-2xl font-display font-extrabold text-xs tracking-wider uppercase flex items-center justify-center gap-2"
+              >
+                <span>Unlock Dashboard</span>
+                <span>➔</span>
+              </button>
+            </form>
+
+            <p className="text-[10px] text-slate-500 font-medium pt-2 border-t border-slate-300/40">
+              Protected by AI Bridge Security Policy
+            </p>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
