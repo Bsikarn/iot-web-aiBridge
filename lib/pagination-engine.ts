@@ -1,7 +1,14 @@
 import fs from 'fs';
 import path from 'path';
-import { createCanvas, registerFont } from 'canvas';
+import { createCanvas, registerFont, loadImage } from 'canvas';
 import { PNG } from 'pngjs';
+import { mathjax } from 'mathjax-full/js/mathjax.js';
+import { TeX } from 'mathjax-full/js/input/tex.js';
+import { SVG } from 'mathjax-full/js/output/svg.js';
+import { liteAdaptor } from 'mathjax-full/js/adaptors/liteAdaptor.js';
+import { RegisterHTMLHandler } from 'mathjax-full/js/handlers/html.js';
+import { AllPackages } from 'mathjax-full/js/input/tex/AllPackages.js';
+import { Resvg } from '@resvg/resvg-js';
 
 export interface RenderedPagePayload {
   success: boolean;
@@ -31,21 +38,56 @@ function ensureFontRegistered() {
   }
 }
 
-// Format LaTeX math expressions into human-readable math symbols
+// Initialize MathJax TeX to SVG Converter Engine
+const adaptor = liteAdaptor();
+RegisterHTMLHandler(adaptor);
+
+const tex = new TeX({ packages: AllPackages });
+const svg = new SVG({ fontCache: 'local' });
+const mathDocument = mathjax.document('', { InputJax: tex, OutputJax: svg });
+
+export interface RenderMathResult {
+  buffer: Buffer;
+  width: number;
+  height: number;
+}
+
+/**
+ * Render LaTeX math expression into a high-contrast PNG image buffer using MathJax and Resvg.
+ */
+export function renderMathToPngBuffer(latexCode: string, display = true): RenderMathResult | null {
+  try {
+    const node = mathDocument.convert(latexCode, { display });
+    const svgString = adaptor.innerHTML(node);
+    if (!svgString) return null;
+
+    const resvg = new Resvg(svgString, {
+      font: { loadSystemFonts: false }
+    });
+    const rendered = resvg.render();
+    return {
+      buffer: rendered.asPng(),
+      width: rendered.width,
+      height: rendered.height
+    };
+  } catch (err) {
+    console.error("MathJax rendering error for LaTeX:", latexCode, err);
+    return null;
+  }
+}
+
+// Fallback text formatter for unparseable math expressions
 function formatLatexToReadableMath(rawLatex: string): string {
   try {
     let text = rawLatex
-      // 1. Sanitize font macro wrappers: \mathcal{X}, \mathbb{X}, \boldsymbol{X}, \mathrm{X}, \mathbf{X}, \mathit{X}, \mathfrak{X}, \text{X}
       .replace(/\\(?:mathcal|mathbb|boldsymbol|mathrm|mathbf|mathit|mathfrak|text)\{([^}]+)\}/g, '$1')
       .replace(/\\(?:mathcal|mathbb|boldsymbol|mathrm|mathbf|mathit|mathfrak|text)\s+([a-zA-Z0-9])/g, '$1')
-      // 2. Format Integrals, Fractions, Roots
       .replace(/\\int\\limits_\{([^}]+)\}\^\{([^}]+)\}/g, '∫[$1→$2]')
       .replace(/\\int_\{([^}]+)\}\^\{([^}]+)\}/g, '∫[$1→$2]')
       .replace(/\\int\s+([^\s\\]+)/g, '∫ $1')
       .replace(/\\int/g, '∫')
       .replace(/\\frac\{([^}]+)\}\{([^}]+)\}/g, '($1 / $2)')
       .replace(/\\sqrt\{([^}]+)\}/g, '√($1)')
-      // 3. Operators & Relations
       .replace(/\\pm/g, '±')
       .replace(/\\times/g, '×')
       .replace(/\\cdot/g, '·')
@@ -55,7 +97,6 @@ function formatLatexToReadableMath(rawLatex: string): string {
       .replace(/\\neq/g, '≠')
       .replace(/\\approx/g, '≈')
       .replace(/\\infty/g, '∞')
-      // 4. Greek Symbols
       .replace(/\\pi/g, 'π')
       .replace(/\\theta/g, 'θ')
       .replace(/\\alpha/g, 'α')
@@ -69,13 +110,11 @@ function formatLatexToReadableMath(rawLatex: string): string {
       .replace(/\\Delta/g, 'Δ')
       .replace(/\\Sigma/g, 'Σ')
       .replace(/\\Omega/g, 'Ω')
-      // 5. Summations, Products & Limits
       .replace(/\\sum_\{([^}]+)\}\^\{([^}]+)\}/g, '∑[$1→$2]')
       .replace(/\\sum/g, '∑')
       .replace(/\\prod_\{([^}]+)\}\^\{([^}]+)\}/g, '∏[$1→$2]')
       .replace(/\\prod/g, '∏')
       .replace(/\\lim_\{([^}]+)\}/g, 'lim[$1]')
-      // 6. Clean braces and redundant backslashes
       .replace(/\\left|\\right/g, '')
       .replace(/[\{\}]/g, '')
       .replace(/\\/g, '')
@@ -88,9 +127,13 @@ function formatLatexToReadableMath(rawLatex: string): string {
 
 interface RenderElement {
   type: 'text' | 'header' | 'bullet' | 'math';
-  content: string;
+  content?: string;
+  font?: string;
   height: number;
-  font: string;
+  mathBuffer?: Buffer;
+  mathWidth?: number;
+  mathHeight?: number;
+  isBlockMath?: boolean;
 }
 
 // Wrap text string into lines that fit within maxPixelWidth (238px) using canvas font metrics
@@ -116,10 +159,10 @@ function wrapTextToLines(ctx: any, text: string, fontStr: string, maxPixelWidth 
 }
 
 /**
- * Universal Large-Font Universal Multi-Language E-Ink Engine (LANDSCAPE 250x122px)
- * Uses Sarabun TTF font covering Thai, English, Numbers & Math symbols with 16px - 18px font sizes.
+ * Universal Visual Math E-Ink Engine (LANDSCAPE 250x122px)
+ * Renders LaTeX math expressions into vector SVG / PNG graphics composite on Node Canvas.
  */
-export function renderEInkPages(rawText: string): RenderedPagePayload {
+export async function renderEInkPages(rawText: string): Promise<RenderedPagePayload> {
   ensureFontRegistered();
 
   if (!rawText || rawText.trim() === '') {
@@ -145,26 +188,69 @@ export function renderEInkPages(rawText: string): RenderedPagePayload {
   for (const part of textParts) {
     if (!part) continue;
 
-    if (part.startsWith('$$') && part.endsWith('$$')) {
-      const mathCode = part.slice(2, -2).trim();
-      const formattedMath = formatLatexToReadableMath(mathCode);
-      const wrapped = wrapTextToLines(dCtx, formattedMath, mathFont, 235);
-      for (const wLine of wrapped) {
-        elements.push({ type: 'math', content: wLine, height: 20, font: mathFont });
+    if (
+      (part.startsWith('$$') && part.endsWith('$$')) ||
+      (part.startsWith('\\[') && part.endsWith('\\]'))
+    ) {
+      const isDisplay = true;
+      const mathCode = part.startsWith('$$') ? part.slice(2, -2).trim() : part.slice(2, -2).trim();
+      const mathRes = renderMathToPngBuffer(mathCode, isDisplay);
+
+      if (mathRes) {
+        let drawW = mathRes.width;
+        let drawH = mathRes.height;
+        const maxW = 235;
+        if (drawW > maxW) {
+          const ratio = maxW / drawW;
+          drawW = maxW;
+          drawH = Math.round(drawH * ratio);
+        }
+        elements.push({
+          type: 'math',
+          height: Math.max(16, Math.min(65, drawH + 4)),
+          mathBuffer: mathRes.buffer,
+          mathWidth: drawW,
+          mathHeight: drawH,
+          isBlockMath: true
+        });
+      } else {
+        const formattedMath = formatLatexToReadableMath(mathCode);
+        const wrapped = wrapTextToLines(dCtx, formattedMath, mathFont, 235);
+        for (const wLine of wrapped) {
+          elements.push({ type: 'text', content: wLine, height: 20, font: mathFont });
+        }
       }
-    } else if (part.startsWith('\\[') && part.endsWith('\\]')) {
-      const mathCode = part.slice(2, -2).trim();
-      const formattedMath = formatLatexToReadableMath(mathCode);
-      const wrapped = wrapTextToLines(dCtx, formattedMath, mathFont, 235);
-      for (const wLine of wrapped) {
-        elements.push({ type: 'math', content: wLine, height: 20, font: mathFont });
-      }
-    } else if ((part.startsWith('$') && part.endsWith('$')) || (part.startsWith('\\(') && part.endsWith('\\)'))) {
+    } else if (
+      (part.startsWith('$') && part.endsWith('$')) ||
+      (part.startsWith('\\(') && part.endsWith('\\)'))
+    ) {
+      const isDisplay = false;
       const mathCode = part.startsWith('$') ? part.slice(1, -1).trim() : part.slice(2, -2).trim();
-      const formattedMath = formatLatexToReadableMath(mathCode);
-      const wrapped = wrapTextToLines(dCtx, formattedMath, bodyFont, 235);
-      for (const wLine of wrapped) {
-        elements.push({ type: 'math', content: wLine, height: 19, font: bodyFont });
+      const mathRes = renderMathToPngBuffer(mathCode, isDisplay);
+
+      if (mathRes) {
+        let drawW = mathRes.width;
+        let drawH = mathRes.height;
+        const maxW = 235;
+        if (drawW > maxW) {
+          const ratio = maxW / drawW;
+          drawW = maxW;
+          drawH = Math.round(drawH * ratio);
+        }
+        elements.push({
+          type: 'math',
+          height: Math.max(16, Math.min(50, drawH + 4)),
+          mathBuffer: mathRes.buffer,
+          mathWidth: drawW,
+          mathHeight: drawH,
+          isBlockMath: false
+        });
+      } else {
+        const formattedMath = formatLatexToReadableMath(mathCode);
+        const wrapped = wrapTextToLines(dCtx, formattedMath, bodyFont, 235);
+        for (const wLine of wrapped) {
+          elements.push({ type: 'text', content: wLine, height: 19, font: bodyFont });
+        }
       }
     } else {
       // Standard Markdown / Plain text lines
@@ -220,7 +306,7 @@ export function renderEInkPages(rawText: string): RenderedPagePayload {
   const totalPages = pageElementsList.length || 1;
   const pagesBase64: string[] = [];
 
-  // Render each landscape page using node-canvas with registered universal Sarabun TTF font
+  // Render each landscape page using node-canvas with composite math graphics
   for (let pIdx = 0; pIdx < totalPages; pIdx++) {
     const canvas = createCanvas(PAGE_WIDTH, PAGE_HEIGHT);
     const ctx = canvas.getContext('2d');
@@ -249,18 +335,36 @@ export function renderEInkPages(rawText: string): RenderedPagePayload {
     let yPos = START_Y;
 
     for (const elem of pElements) {
-      ctx.font = elem.font;
-      if (elem.type === 'header') {
-        ctx.fillText(elem.content, PADDING, yPos + 14);
-        ctx.beginPath();
-        ctx.moveTo(PADDING, yPos + 17);
-        ctx.lineTo(PADDING + ctx.measureText(elem.content).width, yPos + 17);
-        ctx.lineWidth = 1;
-        ctx.stroke();
+      if (elem.type === 'math' && elem.mathBuffer) {
+        try {
+          const img = await loadImage(elem.mathBuffer);
+          const drawW = elem.mathWidth || img.width;
+          const drawH = elem.mathHeight || img.height;
+
+          let xPos = PADDING;
+          if (elem.isBlockMath) {
+            xPos = Math.max(PADDING, Math.round((PAGE_WIDTH - drawW) / 2));
+          }
+
+          ctx.drawImage(img, xPos, yPos + 2, drawW, drawH);
+        } catch (imgErr) {
+          console.error("Failed to load math formula image onto canvas:", imgErr);
+        }
+        yPos += elem.height + 2;
       } else {
-        ctx.fillText(elem.content, PADDING, yPos + 13);
+        ctx.font = elem.font || bodyFont;
+        if (elem.type === 'header') {
+          ctx.fillText(elem.content || '', PADDING, yPos + 14);
+          ctx.beginPath();
+          ctx.moveTo(PADDING, yPos + 17);
+          ctx.lineTo(PADDING + ctx.measureText(elem.content || '').width, yPos + 17);
+          ctx.lineWidth = 1;
+          ctx.stroke();
+        } else {
+          ctx.fillText(elem.content || '', PADDING, yPos + 13);
+        }
+        yPos += elem.height + 2;
       }
-      yPos += elem.height + 2;
     }
 
     // Convert Canvas to PNG Buffer and apply 1-bit monochrome binarization
