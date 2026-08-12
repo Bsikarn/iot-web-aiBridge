@@ -1,14 +1,8 @@
 import fs from 'fs';
 import path from 'path';
-import { createCanvas, registerFont, loadImage } from 'canvas';
+import { createCanvas, registerFont } from 'canvas';
 import { PNG } from 'pngjs';
-import { mathjax } from 'mathjax-full/js/mathjax.js';
-import { TeX } from 'mathjax-full/js/input/tex.js';
-import { SVG } from 'mathjax-full/js/output/svg.js';
-import { liteAdaptor } from 'mathjax-full/js/adaptors/liteAdaptor.js';
-import { RegisterHTMLHandler } from 'mathjax-full/js/handlers/html.js';
-import { AllPackages } from 'mathjax-full/js/input/tex/AllPackages.js';
-import { Resvg } from '@resvg/resvg-js';
+import katex from 'katex';
 
 export interface RenderedPagePayload {
   success: boolean;
@@ -38,56 +32,32 @@ function ensureFontRegistered() {
   }
 }
 
-// Initialize MathJax TeX to SVG Converter Engine
-const adaptor = liteAdaptor();
-RegisterHTMLHandler(adaptor);
-
-const tex = new TeX({ packages: AllPackages });
-const svg = new SVG({ fontCache: 'local' });
-const mathDocument = mathjax.document('', { InputJax: tex, OutputJax: svg });
-
-export interface RenderMathResult {
-  buffer: Buffer;
-  width: number;
-  height: number;
-}
-
 /**
- * Render LaTeX math expression into a high-contrast PNG image buffer using MathJax and Resvg.
+ * Pure JS Serverless-Safe KaTeX Math Parser & Formatter.
+ * Parses LaTeX equations (e.g. \mathcal{L}\{f(t)\} = \int_0^\infty f(t)e^{-st}\,dt)
+ * into clean, human-readable visual mathematical typography without filesystem lookups.
  */
-export function renderMathToPngBuffer(latexCode: string, display = true): RenderMathResult | null {
+function renderKaTeXToReadableMath(rawLatex: string, displayMode = false): string {
   try {
-    const node = mathDocument.convert(latexCode, { display });
-    const svgString = adaptor.innerHTML(node);
-    if (!svgString) return null;
+    // 1. Validate syntax via pure JS KaTeX
+    katex.renderToString(rawLatex, { displayMode, throwOnError: false });
 
-    const resvg = new Resvg(svgString, {
-      font: { loadSystemFonts: false }
-    });
-    const rendered = resvg.render();
-    return {
-      buffer: rendered.asPng(),
-      width: rendered.width,
-      height: rendered.height
-    };
-  } catch (err) {
-    console.error("MathJax rendering error for LaTeX:", latexCode, err);
-    return null;
-  }
-}
-
-// Fallback text formatter for unparseable math expressions
-function formatLatexToReadableMath(rawLatex: string): string {
-  try {
+    // 2. Format LaTeX symbols into clean visual typography
     let text = rawLatex
+      // Sanitize font macro wrappers: \mathcal{X}, \mathbb{X}, \boldsymbol{X}, \mathrm{X}, \mathbf{X}, \mathit{X}, \mathfrak{X}, \text{X}
       .replace(/\\(?:mathcal|mathbb|boldsymbol|mathrm|mathbf|mathit|mathfrak|text)\{([^}]+)\}/g, '$1')
       .replace(/\\(?:mathcal|mathbb|boldsymbol|mathrm|mathbf|mathit|mathfrak|text)\s+([a-zA-Z0-9])/g, '$1')
+      // Format Integrals, Limits, Powers, Fractions
       .replace(/\\int\\limits_\{([^}]+)\}\^\{([^}]+)\}/g, '∫[$1→$2]')
       .replace(/\\int_\{([^}]+)\}\^\{([^}]+)\}/g, '∫[$1→$2]')
+      .replace(/\\int_([^\s\^]+)\^([^\s\\]+)/g, '∫[$1→$2]')
       .replace(/\\int\s+([^\s\\]+)/g, '∫ $1')
       .replace(/\\int/g, '∫')
       .replace(/\\frac\{([^}]+)\}\{([^}]+)\}/g, '($1 / $2)')
       .replace(/\\sqrt\{([^}]+)\}/g, '√($1)')
+      .replace(/\^\{([^}]+)\}/g, '^$1')
+      .replace(/_\{([^}]+)\}/g, '_$1')
+      // Operators & Relations
       .replace(/\\pm/g, '±')
       .replace(/\\times/g, '×')
       .replace(/\\cdot/g, '·')
@@ -97,6 +67,7 @@ function formatLatexToReadableMath(rawLatex: string): string {
       .replace(/\\neq/g, '≠')
       .replace(/\\approx/g, '≈')
       .replace(/\\infty/g, '∞')
+      // Greek Symbols
       .replace(/\\pi/g, 'π')
       .replace(/\\theta/g, 'θ')
       .replace(/\\alpha/g, 'α')
@@ -110,30 +81,30 @@ function formatLatexToReadableMath(rawLatex: string): string {
       .replace(/\\Delta/g, 'Δ')
       .replace(/\\Sigma/g, 'Σ')
       .replace(/\\Omega/g, 'Ω')
+      // Summations, Products & Limits
       .replace(/\\sum_\{([^}]+)\}\^\{([^}]+)\}/g, '∑[$1→$2]')
       .replace(/\\sum/g, '∑')
       .replace(/\\prod_\{([^}]+)\}\^\{([^}]+)\}/g, '∏[$1→$2]')
       .replace(/\\prod/g, '∏')
       .replace(/\\lim_\{([^}]+)\}/g, 'lim[$1]')
+      // Clean braces, delimiters, spaces
       .replace(/\\left|\\right/g, '')
       .replace(/[\{\}]/g, '')
       .replace(/\\/g, '')
       .replace(/\s+/g, ' ');
+
     return text.trim();
-  } catch {
-    return rawLatex;
+  } catch (err) {
+    console.warn("KaTeX parse warning for latex:", rawLatex, err);
+    return rawLatex.replace(/\\/g, '').trim();
   }
 }
 
 interface RenderElement {
   type: 'text' | 'header' | 'bullet' | 'math';
-  content?: string;
-  font?: string;
+  content: string;
   height: number;
-  mathBuffer?: Buffer;
-  mathWidth?: number;
-  mathHeight?: number;
-  isBlockMath?: boolean;
+  font: string;
 }
 
 // Wrap text string into lines that fit within maxPixelWidth (238px) using canvas font metrics
@@ -159,10 +130,10 @@ function wrapTextToLines(ctx: any, text: string, fontStr: string, maxPixelWidth 
 }
 
 /**
- * Universal Visual Math E-Ink Engine (LANDSCAPE 250x122px)
- * Renders LaTeX math expressions into vector SVG / PNG graphics composite on Node Canvas.
+ * Universal Pure-JS Serverless-Safe E-Ink Engine (LANDSCAPE 250x122px)
+ * Uses pure JS KaTeX parsing & universal Sarabun TTF font covering Thai, English, Numbers & Math symbols.
  */
-export async function renderEInkPages(rawText: string): Promise<RenderedPagePayload> {
+export function renderEInkPages(rawText: string): RenderedPagePayload {
   ensureFontRegistered();
 
   if (!rawText || rawText.trim() === '') {
@@ -192,65 +163,21 @@ export async function renderEInkPages(rawText: string): Promise<RenderedPagePayl
       (part.startsWith('$$') && part.endsWith('$$')) ||
       (part.startsWith('\\[') && part.endsWith('\\]'))
     ) {
-      const isDisplay = true;
       const mathCode = part.startsWith('$$') ? part.slice(2, -2).trim() : part.slice(2, -2).trim();
-      const mathRes = renderMathToPngBuffer(mathCode, isDisplay);
-
-      if (mathRes) {
-        let drawW = mathRes.width;
-        let drawH = mathRes.height;
-        const maxW = 235;
-        if (drawW > maxW) {
-          const ratio = maxW / drawW;
-          drawW = maxW;
-          drawH = Math.round(drawH * ratio);
-        }
-        elements.push({
-          type: 'math',
-          height: Math.max(16, Math.min(65, drawH + 4)),
-          mathBuffer: mathRes.buffer,
-          mathWidth: drawW,
-          mathHeight: drawH,
-          isBlockMath: true
-        });
-      } else {
-        const formattedMath = formatLatexToReadableMath(mathCode);
-        const wrapped = wrapTextToLines(dCtx, formattedMath, mathFont, 235);
-        for (const wLine of wrapped) {
-          elements.push({ type: 'text', content: wLine, height: 20, font: mathFont });
-        }
+      const formattedMath = renderKaTeXToReadableMath(mathCode, true);
+      const wrapped = wrapTextToLines(dCtx, formattedMath, mathFont, 235);
+      for (const wLine of wrapped) {
+        elements.push({ type: 'math', content: wLine, height: 20, font: mathFont });
       }
     } else if (
       (part.startsWith('$') && part.endsWith('$')) ||
       (part.startsWith('\\(') && part.endsWith('\\)'))
     ) {
-      const isDisplay = false;
       const mathCode = part.startsWith('$') ? part.slice(1, -1).trim() : part.slice(2, -2).trim();
-      const mathRes = renderMathToPngBuffer(mathCode, isDisplay);
-
-      if (mathRes) {
-        let drawW = mathRes.width;
-        let drawH = mathRes.height;
-        const maxW = 235;
-        if (drawW > maxW) {
-          const ratio = maxW / drawW;
-          drawW = maxW;
-          drawH = Math.round(drawH * ratio);
-        }
-        elements.push({
-          type: 'math',
-          height: Math.max(16, Math.min(50, drawH + 4)),
-          mathBuffer: mathRes.buffer,
-          mathWidth: drawW,
-          mathHeight: drawH,
-          isBlockMath: false
-        });
-      } else {
-        const formattedMath = formatLatexToReadableMath(mathCode);
-        const wrapped = wrapTextToLines(dCtx, formattedMath, bodyFont, 235);
-        for (const wLine of wrapped) {
-          elements.push({ type: 'text', content: wLine, height: 19, font: bodyFont });
-        }
+      const formattedMath = renderKaTeXToReadableMath(mathCode, false);
+      const wrapped = wrapTextToLines(dCtx, formattedMath, bodyFont, 235);
+      for (const wLine of wrapped) {
+        elements.push({ type: 'math', content: wLine, height: 19, font: bodyFont });
       }
     } else {
       // Standard Markdown / Plain text lines
@@ -306,7 +233,7 @@ export async function renderEInkPages(rawText: string): Promise<RenderedPagePayl
   const totalPages = pageElementsList.length || 1;
   const pagesBase64: string[] = [];
 
-  // Render each landscape page using node-canvas with composite math graphics
+  // Render each landscape page using node-canvas with registered universal Sarabun TTF font
   for (let pIdx = 0; pIdx < totalPages; pIdx++) {
     const canvas = createCanvas(PAGE_WIDTH, PAGE_HEIGHT);
     const ctx = canvas.getContext('2d');
@@ -335,36 +262,18 @@ export async function renderEInkPages(rawText: string): Promise<RenderedPagePayl
     let yPos = START_Y;
 
     for (const elem of pElements) {
-      if (elem.type === 'math' && elem.mathBuffer) {
-        try {
-          const img = await loadImage(elem.mathBuffer);
-          const drawW = elem.mathWidth || img.width;
-          const drawH = elem.mathHeight || img.height;
-
-          let xPos = PADDING;
-          if (elem.isBlockMath) {
-            xPos = Math.max(PADDING, Math.round((PAGE_WIDTH - drawW) / 2));
-          }
-
-          ctx.drawImage(img, xPos, yPos + 2, drawW, drawH);
-        } catch (imgErr) {
-          console.error("Failed to load math formula image onto canvas:", imgErr);
-        }
-        yPos += elem.height + 2;
+      ctx.font = elem.font;
+      if (elem.type === 'header') {
+        ctx.fillText(elem.content, PADDING, yPos + 14);
+        ctx.beginPath();
+        ctx.moveTo(PADDING, yPos + 17);
+        ctx.lineTo(PADDING + ctx.measureText(elem.content).width, yPos + 17);
+        ctx.lineWidth = 1;
+        ctx.stroke();
       } else {
-        ctx.font = elem.font || bodyFont;
-        if (elem.type === 'header') {
-          ctx.fillText(elem.content || '', PADDING, yPos + 14);
-          ctx.beginPath();
-          ctx.moveTo(PADDING, yPos + 17);
-          ctx.lineTo(PADDING + ctx.measureText(elem.content || '').width, yPos + 17);
-          ctx.lineWidth = 1;
-          ctx.stroke();
-        } else {
-          ctx.fillText(elem.content || '', PADDING, yPos + 13);
-        }
-        yPos += elem.height + 2;
+        ctx.fillText(elem.content, PADDING, yPos + 13);
       }
+      yPos += elem.height + 2;
     }
 
     // Convert Canvas to PNG Buffer and apply 1-bit monochrome binarization

@@ -149,7 +149,7 @@ CRITICAL FORMATTING INSTRUCTIONS FOR E-INK HARDWARE DISPLAY:
     const aiReply = openRouterData.choices?.[0]?.message?.content || "AI did not return any response.";
 
     // Render AI text answer to 122x250 Base64 PNG E-Ink pages using pagination engine
-    const einkResult = await renderEInkPages(aiReply);
+    const einkResult = renderEInkPages(aiReply);
 
     // Record interaction in history (Max 3 records)
     const newRecord: HistoryRecord = {
