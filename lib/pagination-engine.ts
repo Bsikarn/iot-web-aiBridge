@@ -35,28 +35,50 @@ function ensureFontRegistered() {
 function formatLatexToReadableMath(rawLatex: string): string {
   try {
     let text = rawLatex
+      // 1. Sanitize font macro wrappers: \mathcal{X}, \mathbb{X}, \boldsymbol{X}, \mathrm{X}, \mathbf{X}, \mathit{X}, \mathfrak{X}, \text{X}
+      .replace(/\\(?:mathcal|mathbb|boldsymbol|mathrm|mathbf|mathit|mathfrak|text)\{([^}]+)\}/g, '$1')
+      .replace(/\\(?:mathcal|mathbb|boldsymbol|mathrm|mathbf|mathit|mathfrak|text)\s+([a-zA-Z0-9])/g, '$1')
+      // 2. Format Integrals, Fractions, Roots
       .replace(/\\int\\limits_\{([^}]+)\}\^\{([^}]+)\}/g, '∫[$1→$2]')
       .replace(/\\int_\{([^}]+)\}\^\{([^}]+)\}/g, '∫[$1→$2]')
       .replace(/\\int\s+([^\s\\]+)/g, '∫ $1')
       .replace(/\\int/g, '∫')
       .replace(/\\frac\{([^}]+)\}\{([^}]+)\}/g, '($1 / $2)')
       .replace(/\\sqrt\{([^}]+)\}/g, '√($1)')
+      // 3. Operators & Relations
       .replace(/\\pm/g, '±')
-      .replace(/\\times/g, '*')
-      .replace(/\\div/g, '/')
+      .replace(/\\times/g, '×')
+      .replace(/\\cdot/g, '·')
+      .replace(/\\div/g, '÷')
       .replace(/\\le|\\leq/g, '≤')
       .replace(/\\ge|\\geq/g, '≥')
       .replace(/\\neq/g, '≠')
+      .replace(/\\approx/g, '≈')
       .replace(/\\infty/g, '∞')
+      // 4. Greek Symbols
       .replace(/\\pi/g, 'π')
       .replace(/\\theta/g, 'θ')
       .replace(/\\alpha/g, 'α')
       .replace(/\\beta/g, 'β')
+      .replace(/\\gamma/g, 'γ')
+      .replace(/\\delta/g, 'δ')
+      .replace(/\\epsilon/g, 'ε')
+      .replace(/\\lambda/g, 'λ')
+      .replace(/\\sigma/g, 'σ')
+      .replace(/\\omega/g, 'ω')
+      .replace(/\\Delta/g, 'Δ')
+      .replace(/\\Sigma/g, 'Σ')
+      .replace(/\\Omega/g, 'Ω')
+      // 5. Summations, Products & Limits
       .replace(/\\sum_\{([^}]+)\}\^\{([^}]+)\}/g, '∑[$1→$2]')
       .replace(/\\sum/g, '∑')
+      .replace(/\\prod_\{([^}]+)\}\^\{([^}]+)\}/g, '∏[$1→$2]')
+      .replace(/\\prod/g, '∏')
       .replace(/\\lim_\{([^}]+)\}/g, 'lim[$1]')
+      // 6. Clean braces and redundant backslashes
       .replace(/\\left|\\right/g, '')
       .replace(/[\{\}]/g, '')
+      .replace(/\\/g, '')
       .replace(/\s+/g, ' ');
     return text.trim();
   } catch {
@@ -126,14 +148,14 @@ export function renderEInkPages(rawText: string): RenderedPagePayload {
     if (part.startsWith('$$') && part.endsWith('$$')) {
       const mathCode = part.slice(2, -2).trim();
       const formattedMath = formatLatexToReadableMath(mathCode);
-      const wrapped = wrapTextToLines(dCtx, '[MATH] ' + formattedMath, mathFont, 235);
+      const wrapped = wrapTextToLines(dCtx, formattedMath, mathFont, 235);
       for (const wLine of wrapped) {
         elements.push({ type: 'math', content: wLine, height: 20, font: mathFont });
       }
     } else if (part.startsWith('\\[') && part.endsWith('\\]')) {
       const mathCode = part.slice(2, -2).trim();
       const formattedMath = formatLatexToReadableMath(mathCode);
-      const wrapped = wrapTextToLines(dCtx, '[MATH] ' + formattedMath, mathFont, 235);
+      const wrapped = wrapTextToLines(dCtx, formattedMath, mathFont, 235);
       for (const wLine of wrapped) {
         elements.push({ type: 'math', content: wLine, height: 20, font: mathFont });
       }

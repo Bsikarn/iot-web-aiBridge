@@ -33,6 +33,15 @@ export async function GET(req: Request) {
       };
     });
 
+    // Construct explicit models list for hardware board auto-discovery
+    const modelsList = Array.from({ length: 10 }, (_, i) => {
+      const modelName = settings.models?.[i] || DEFAULT_AI_SETTING.models[i] || `Model #${i + 1}`;
+      return {
+        index: i + 1,
+        name: modelName
+      };
+    });
+
     return NextResponse.json({
       success: true,
       data: {
@@ -40,6 +49,7 @@ export async function GET(req: Request) {
         wifi_networks: wifiNetworks
       },
       slots: slots,
+      models: modelsList,
       wifi_networks: wifiNetworks
     });
   } catch (error: any) {

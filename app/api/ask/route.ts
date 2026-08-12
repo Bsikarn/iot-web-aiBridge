@@ -99,7 +99,8 @@ export async function POST(req: Request) {
 
 CRITICAL FORMATTING INSTRUCTIONS FOR E-INK HARDWARE DISPLAY:
 1. STRICTLY FORBID MATH DELIMITERS FOR SINGLE VARIABLES: Never wrap single variables, letters, numbers, coefficients, or simple terms in dollar signs (do NOT write $x$, $y$, $n$, $a$, or $1$). Always write single variables and plain text identifiers as regular plain text characters (write x, y, n, a normally without any $ or $$ symbols).
-2. UNIFORM TYPOGRAPHY: Use standard regular-weight plain text and markdown formatting so all text renders cleanly at a uniform weight on the monochrome E-Ink hardware screen. Only use LaTeX math wrappers ($...$ or $$...$$) for complex multi-term equations.`;
+2. WRITE STANDARD CLEAN LATEX: Write standard, clean LaTeX without using obscure font macro wrappers like \\mathcal, \\mathfrak, \\mathbb, or custom packages.
+3. UNIFORM TYPOGRAPHY: Use standard regular-weight plain text and markdown formatting so all text renders cleanly at a uniform weight on the monochrome E-Ink hardware screen. Only use LaTeX math wrappers ($...$ or $$...$$) for complex multi-term equations.`;
 
     const kbSection = activeKb.trim()
       ? `<knowledge_base>\n${activeKb.trim()}\n</knowledge_base>`
