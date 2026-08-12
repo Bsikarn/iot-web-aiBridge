@@ -39,6 +39,27 @@ export interface RenderMathResult {
 }
 
 /**
+ * Thai Word Segmentation Preprocessor using native JavaScript Intl.Segmenter.
+ * Inserts zero-width spaces (\u200b) between Thai words to allow clean, dictionary-accurate line wrapping.
+ */
+function formatThaiText(text: string): string {
+  if (!text) return '';
+  if (typeof Intl !== 'undefined' && 'Segmenter' in Intl) {
+    try {
+      const segmenter = new (Intl as any).Segmenter('th', { granularity: 'word' });
+      let result = '';
+      for (const { segment, isWordLike } of segmenter.segment(text)) {
+        result += segment + (isWordLike ? '\u200b' : '');
+      }
+      return result;
+    } catch {
+      return text;
+    }
+  }
+  return text;
+}
+
+/**
  * Convert Markdown text (bold **, italic *, headings #) into clean HTML elements.
  */
 function convertMarkdownToHtml(markdownText: string): string {
@@ -262,6 +283,7 @@ export async function renderEInkPages(rawText: string): Promise<RenderedPagePayl
   const apiKey = process.env.HCTI_API_KEY || process.env.HTMLCSSTOIMAGE_API_KEY;
 
   if (userId && apiKey) {
+    const formattedRawText = formatThaiText(rawText);
     const styledHtml = `<!DOCTYPE html>
 <html>
 <head>
@@ -277,7 +299,7 @@ export async function renderEInkPages(rawText: string): Promise<RenderedPagePayl
       font-family: 'Sarabun', sans-serif;
       font-size: 13px;
       line-height: 1.35;
-      padding: 6px;
+      padding: 8px;
       overflow: hidden;
       word-break: break-word;
       overflow-wrap: break-word;
@@ -286,7 +308,7 @@ export async function renderEInkPages(rawText: string): Promise<RenderedPagePayl
     .content-container {
       width: 250px;
       height: 122px;
-      padding: 6px;
+      padding: 8px;
       box-sizing: border-box;
       word-break: break-word;
       overflow-wrap: break-word;
@@ -317,7 +339,7 @@ export async function renderEInkPages(rawText: string): Promise<RenderedPagePayl
       <span>[1/1]</span>
     </div>
     <div class="content">
-      ${convertMarkdownToHtml(rawText)}
+      ${convertMarkdownToHtml(formattedRawText)}
     </div>
   </div>
 </body>
