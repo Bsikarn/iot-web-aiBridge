@@ -24,12 +24,12 @@ A stealth hardware-software integration allowing users to capture images from a 
 
 ### Tools & Libraries
 - OpenRouter Native HTTP Fetch API (Gemini, GPT, Claude, DeepSeek, Llama, etc.)
-- Pure-JS Serverless-Safe KaTeX Engine (`katex`) for parsing and rendering high-contrast LaTeX math expressions safely in serverless environments.
+- Cloud HTML-to-Image API (`HCTI` / `HTMLCSSTOIMAGE`) & CodeCogs LaTeX API for generating high-contrast 250x122px PNG E-Ink pages with bulletproof fallbacks.
 
 ## Active Features
 
 - **Flat Design Dashboard** — Solid color blocks with 8px rounded cards, flat inputs/textareas, scale hover interaction details, clean primary blue action buttons, concise branding title ("AI BRIDGE"), and zero text emojis (all UI elements use SVG vector icons).
-- **Pure-JS Serverless-Safe Math Rendering** — Powered by KaTeX pure JavaScript engine (`katex`) without dynamic filesystem package lookups or native node binary dependencies. Parses LaTeX expressions ($\int_0^\infty f(t)e^{-st}dt$, $\frac{a}{b}$, $\mathcal{L}$, etc.) cleanly and reliably inside Vercel Serverless Functions.
+- **Cloud HTML-to-Image Rendering Pipeline** — Converts AI answers into beautifully formatted 250x122px HTML/CSS viewports rendered into monochrome PNG images via Cloud APIs (`HCTI` / `HTMLCSSTOIMAGE`) with automatic fallback to local Node-Canvas & CodeCogs rendering, preventing Vercel Serverless Function 500 crashes.
 - **Dashboard Access PIN Lock Modal** — Front-end PIN security lock (`NEXT_PUBLIC_DASHBOARD_PIN`, fallback `"1234"`) featuring a full-screen dark overlay, masked password input with alphanumeric support, error feedback, pointer-events & scroll locking when unauthenticated, and `sessionStorage` unlock persistence. All hardware API routes remain unaffected.
 - **Drag-and-Drop KB Upload Modal** — Interactive file upload modal for Knowledge Base slots with SVG dropzone icon, fallback file picker, strict `.txt` and `.md` file type enforcement (PDF support removed), validation toast alerts, file details preview (File Name, File Size, File Type), and instant text extraction into KB state.
 - **Secure Wi-Fi Management UI** — Shows network SSID and password status badges (`Password Saved` / `Open Network`). Allows inputting a new password to overwrite existing settings while completely hiding raw passwords.

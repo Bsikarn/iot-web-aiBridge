@@ -1,6 +1,6 @@
 import fs from 'fs';
 import path from 'path';
-import { createCanvas, registerFont } from 'canvas';
+import { createCanvas, registerFont, loadImage } from 'canvas';
 import { PNG } from 'pngjs';
 import katex from 'katex';
 
@@ -32,22 +32,118 @@ function ensureFontRegistered() {
   }
 }
 
+export interface RenderMathResult {
+  buffer: Buffer;
+  width: number;
+  height: number;
+}
+
 /**
- * Pure JS Serverless-Safe KaTeX Math Parser & Formatter.
- * Parses LaTeX equations (e.g. \mathcal{L}\{f(t)\} = \int_0^\infty f(t)e^{-st}\,dt)
- * into clean, human-readable visual mathematical typography without filesystem lookups.
+ * Render clean HTML content into a 250x122px PNG image buffer using Cloud HTML-to-Image API.
+ */
+export async function renderHtmlToImageBuffer(htmlContent: string): Promise<Buffer | null> {
+  const userId = process.env.HCTI_USER_ID || process.env.HTMLCSSTOIMAGE_USER_ID;
+  const apiKey = process.env.HCTI_API_KEY || process.env.HTMLCSSTOIMAGE_API_KEY;
+  const apiUrl = process.env.HTML_TO_IMAGE_API_URL || 'https://hcti.io/v1/image';
+
+  if (!userId || !apiKey) {
+    return null;
+  }
+
+  try {
+    const auth = Buffer.from(`${userId}:${apiKey}`).toString('base64');
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 6000); // 6s timeout
+
+    const res = await fetch(apiUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Basic ${auth}`
+      },
+      body: JSON.stringify({
+        html: htmlContent,
+        width: PAGE_WIDTH,
+        height: PAGE_HEIGHT,
+        viewport_width: PAGE_WIDTH,
+        viewport_height: PAGE_HEIGHT,
+        device_scale_factor: 1,
+        output: 'png'
+      }),
+      signal: controller.signal
+    });
+    clearTimeout(timeoutId);
+
+    if (!res.ok) {
+      console.warn(`Cloud HTML-to-Image API returned HTTP ${res.status}`);
+      return null;
+    }
+
+    const data = await res.json();
+    const imageUrl = data.url || data.image_url;
+    if (!imageUrl) return null;
+
+    const imgRes = await fetch(imageUrl);
+    if (!imgRes.ok) return null;
+
+    const arrayBuf = await imgRes.arrayBuffer();
+    return Buffer.from(arrayBuf);
+  } catch (err) {
+    console.error("Cloud HTML-to-Image API exception:", err);
+    return null;
+  }
+}
+
+/**
+ * Fetch rendered LaTeX math formula PNG image buffer from CodeCogs API.
+ * Endpoint: https://latex.codecogs.com/png.latex?\dpi{150}\bg{white}%20{ENCODED_LATEX_STRING}
+ */
+export async function fetchCodeCogsMathBuffer(latexCode: string): Promise<RenderMathResult | null> {
+  try {
+    const cleanLatex = latexCode.trim();
+    if (!cleanLatex) return null;
+
+    const url = `https://latex.codecogs.com/png.latex?\\dpi{150}\\bg{white}%20${encodeURIComponent(cleanLatex)}`;
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 5000); // 5-second fetch timeout
+
+    const res = await fetch(url, { signal: controller.signal });
+    clearTimeout(timeoutId);
+
+    if (!res.ok) {
+      console.warn(`CodeCogs API HTTP ${res.status} for formula:`, cleanLatex);
+      return null;
+    }
+
+    const arrayBuffer = await res.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
+
+    if (buffer.byteLength < 50) {
+      return null;
+    }
+
+    const img = await loadImage(buffer);
+    return {
+      buffer,
+      width: img.width,
+      height: img.height
+    };
+  } catch (err) {
+    console.error("CodeCogs API fetch exception for LaTeX:", latexCode, err);
+    return null;
+  }
+}
+
+/**
+ * Pure JS Serverless-Safe KaTeX Math Formatter fallback.
  */
 function renderKaTeXToReadableMath(rawLatex: string, displayMode = false): string {
   try {
-    // 1. Validate syntax via pure JS KaTeX
     katex.renderToString(rawLatex, { displayMode, throwOnError: false });
 
-    // 2. Format LaTeX symbols into clean visual typography
     let text = rawLatex
-      // Sanitize font macro wrappers: \mathcal{X}, \mathbb{X}, \boldsymbol{X}, \mathrm{X}, \mathbf{X}, \mathit{X}, \mathfrak{X}, \text{X}
-      .replace(/\\(?:mathcal|mathbb|boldsymbol|mathrm|mathbf|mathit|mathfrak|text)\{([^}]+)\}/g, '$1')
-      .replace(/\\(?:mathcal|mathbb|boldsymbol|mathrm|mathbf|mathit|mathfrak|text)\s+([a-zA-Z0-9])/g, '$1')
-      // Format Integrals, Limits, Powers, Fractions
+      .replace(/\\(?:mathcal|semibold|mathbb|boldsymbol|mathrm|mathbf|mathit|mathfrak|text)\{([^}]+)\}/g, '$1')
+      .replace(/\\(?:mathcal|semibold|mathbb|boldsymbol|mathrm|mathbf|mathit|mathfrak|text)\s+([a-zA-Z0-9])/g, '$1')
       .replace(/\\int\\limits_\{([^}]+)\}\^\{([^}]+)\}/g, '∫[$1→$2]')
       .replace(/\\int_\{([^}]+)\}\^\{([^}]+)\}/g, '∫[$1→$2]')
       .replace(/\\int_([^\s\^]+)\^([^\s\\]+)/g, '∫[$1→$2]')
@@ -57,7 +153,6 @@ function renderKaTeXToReadableMath(rawLatex: string, displayMode = false): strin
       .replace(/\\sqrt\{([^}]+)\}/g, '√($1)')
       .replace(/\^\{([^}]+)\}/g, '^$1')
       .replace(/_\{([^}]+)\}/g, '_$1')
-      // Operators & Relations
       .replace(/\\pm/g, '±')
       .replace(/\\times/g, '×')
       .replace(/\\cdot/g, '·')
@@ -67,7 +162,6 @@ function renderKaTeXToReadableMath(rawLatex: string, displayMode = false): strin
       .replace(/\\neq/g, '≠')
       .replace(/\\approx/g, '≈')
       .replace(/\\infty/g, '∞')
-      // Greek Symbols
       .replace(/\\pi/g, 'π')
       .replace(/\\theta/g, 'θ')
       .replace(/\\alpha/g, 'α')
@@ -81,13 +175,11 @@ function renderKaTeXToReadableMath(rawLatex: string, displayMode = false): strin
       .replace(/\\Delta/g, 'Δ')
       .replace(/\\Sigma/g, 'Σ')
       .replace(/\\Omega/g, 'Ω')
-      // Summations, Products & Limits
       .replace(/\\sum_\{([^}]+)\}\^\{([^}]+)\}/g, '∑[$1→$2]')
       .replace(/\\sum/g, '∑')
       .replace(/\\prod_\{([^}]+)\}\^\{([^}]+)\}/g, '∏[$1→$2]')
       .replace(/\\prod/g, '∏')
       .replace(/\\lim_\{([^}]+)\}/g, 'lim[$1]')
-      // Clean braces, delimiters, spaces
       .replace(/\\left|\\right/g, '')
       .replace(/[\{\}]/g, '')
       .replace(/\\/g, '')
@@ -95,16 +187,19 @@ function renderKaTeXToReadableMath(rawLatex: string, displayMode = false): strin
 
     return text.trim();
   } catch (err) {
-    console.warn("KaTeX parse warning for latex:", rawLatex, err);
     return rawLatex.replace(/\\/g, '').trim();
   }
 }
 
 interface RenderElement {
   type: 'text' | 'header' | 'bullet' | 'math';
-  content: string;
+  content?: string;
+  font?: string;
   height: number;
-  font: string;
+  mathBuffer?: Buffer;
+  mathWidth?: number;
+  mathHeight?: number;
+  isBlockMath?: boolean;
 }
 
 // Wrap text string into lines that fit within maxPixelWidth (238px) using canvas font metrics
@@ -130,14 +225,89 @@ function wrapTextToLines(ctx: any, text: string, fontStr: string, maxPixelWidth 
 }
 
 /**
- * Universal Pure-JS Serverless-Safe E-Ink Engine (LANDSCAPE 250x122px)
- * Uses pure JS KaTeX parsing & universal Sarabun TTF font covering Thai, English, Numbers & Math symbols.
+ * Universal Cloud HTML-to-Image E-Ink Rendering Engine (LANDSCAPE 250x122px)
+ * Renders AI answers into high-contrast 250x122px PNG E-Ink pages using Cloud API with Canvas fallback.
  */
-export function renderEInkPages(rawText: string): RenderedPagePayload {
+export async function renderEInkPages(rawText: string): Promise<RenderedPagePayload> {
   ensureFontRegistered();
 
   if (!rawText || rawText.trim() === '') {
     return createEmptyPagePayload("No answer");
+  }
+
+  // Check if Cloud HTML-to-Image API is configured and attempt cloud rendering
+  const userId = process.env.HCTI_USER_ID || process.env.HTMLCSSTOIMAGE_USER_ID;
+  const apiKey = process.env.HCTI_API_KEY || process.env.HTMLCSSTOIMAGE_API_KEY;
+
+  if (userId && apiKey) {
+    const styledHtml = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Sarabun:wght@400;700&display=swap');
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      width: 250px;
+      height: 122px;
+      background: #ffffff;
+      color: #000000;
+      font-family: 'Sarabun', sans-serif;
+      font-size: 14px;
+      line-height: 1.35;
+      padding: 6px;
+      overflow: hidden;
+    }
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid #000000;
+      padding-bottom: 2px;
+      margin-bottom: 4px;
+      font-weight: bold;
+      font-size: 11px;
+    }
+    .content { font-size: 13px; word-break: break-word; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <span>AI BRIDGE</span>
+    <span>[1/1]</span>
+  </div>
+  <div class="content">
+    ${rawText.replace(/\n/g, '<br/>')}
+  </div>
+</body>
+</html>`;
+
+    const cloudBuffer = await renderHtmlToImageBuffer(styledHtml);
+    if (cloudBuffer) {
+      const png = PNG.sync.read(cloudBuffer);
+      for (let i = 0; i < png.data.length; i += 4) {
+        const alpha = png.data[i + 3];
+        if (alpha === 0) {
+          png.data[i] = 255;
+          png.data[i + 1] = 255;
+          png.data[i + 2] = 255;
+          png.data[i + 3] = 255;
+        } else {
+          const avg = (png.data[i] + png.data[i + 1] + png.data[i + 2]) / 3;
+          const val = avg <= 200 ? 0 : 255;
+          png.data[i] = val;
+          png.data[i + 1] = val;
+          png.data[i + 2] = val;
+          png.data[i + 3] = 255;
+        }
+      }
+      const binarized = PNG.sync.write(png);
+      return {
+        success: true,
+        total_pages: 1,
+        pages: [`data:image/png;base64,${binarized.toString('base64')}`]
+      };
+    }
   }
 
   // Create temporary canvas for text measurement
@@ -152,8 +322,8 @@ export function renderEInkPages(rawText: string): RenderedPagePayload {
 
   const elements: RenderElement[] = [];
 
-  // Parse LaTeX math blocks ($$...$$ or \[...\]) and inline math ($...$ or \(...\))
-  const mathRegex = /(\$\$[\s\S]*?\$\$|\\\[[\s\S]*?\\\]|\$[\s\S]*?\$|\\\([\s\S]*?\\\))/g;
+  // Parse LaTeX math blocks ($$...$$, \[...\], \begin{equation}...\end{equation}) and inline math ($...$, \(...\))
+  const mathRegex = /(\$\$[\s\S]*?\$\$|\\\[[\s\S]*?\\\]|\\begin\{equation\}[\s\S]*?\\end\{equation\}|\$[\s\S]*?\$|\\\([\s\S]*?\\\))/g;
   const textParts = rawText.split(mathRegex);
 
   for (const part of textParts) {
@@ -161,23 +331,69 @@ export function renderEInkPages(rawText: string): RenderedPagePayload {
 
     if (
       (part.startsWith('$$') && part.endsWith('$$')) ||
-      (part.startsWith('\\[') && part.endsWith('\\]'))
+      (part.startsWith('\\[') && part.endsWith('\\]')) ||
+      (part.startsWith('\\begin{equation}') && part.endsWith('\\end{equation}'))
     ) {
-      const mathCode = part.startsWith('$$') ? part.slice(2, -2).trim() : part.slice(2, -2).trim();
-      const formattedMath = renderKaTeXToReadableMath(mathCode, true);
-      const wrapped = wrapTextToLines(dCtx, formattedMath, mathFont, 235);
-      for (const wLine of wrapped) {
-        elements.push({ type: 'math', content: wLine, height: 20, font: mathFont });
+      let mathCode = '';
+      if (part.startsWith('$$')) mathCode = part.slice(2, -2).trim();
+      else if (part.startsWith('\\[')) mathCode = part.slice(2, -2).trim();
+      else mathCode = part.replace(/^\\begin\{equation\}/, '').replace(/\\end\{equation\}$/, '').trim();
+
+      const mathRes = await fetchCodeCogsMathBuffer(mathCode);
+      if (mathRes) {
+        let drawW = mathRes.width;
+        let drawH = mathRes.height;
+        const maxW = 235;
+        if (drawW > maxW) {
+          const ratio = maxW / drawW;
+          drawW = maxW;
+          drawH = Math.round(drawH * ratio);
+        }
+        elements.push({
+          type: 'math',
+          height: Math.max(16, Math.min(65, drawH + 4)),
+          mathBuffer: mathRes.buffer,
+          mathWidth: drawW,
+          mathHeight: drawH,
+          isBlockMath: true
+        });
+      } else {
+        const formattedMath = renderKaTeXToReadableMath(mathCode, true);
+        const wrapped = wrapTextToLines(dCtx, formattedMath, mathFont, 235);
+        for (const wLine of wrapped) {
+          elements.push({ type: 'text', content: wLine, height: 20, font: mathFont });
+        }
       }
     } else if (
       (part.startsWith('$') && part.endsWith('$')) ||
       (part.startsWith('\\(') && part.endsWith('\\)'))
     ) {
       const mathCode = part.startsWith('$') ? part.slice(1, -1).trim() : part.slice(2, -2).trim();
-      const formattedMath = renderKaTeXToReadableMath(mathCode, false);
-      const wrapped = wrapTextToLines(dCtx, formattedMath, bodyFont, 235);
-      for (const wLine of wrapped) {
-        elements.push({ type: 'math', content: wLine, height: 19, font: bodyFont });
+      const mathRes = await fetchCodeCogsMathBuffer(mathCode);
+
+      if (mathRes) {
+        let drawW = mathRes.width;
+        let drawH = mathRes.height;
+        const maxW = 235;
+        if (drawW > maxW) {
+          const ratio = maxW / drawW;
+          drawW = maxW;
+          drawH = Math.round(drawH * ratio);
+        }
+        elements.push({
+          type: 'math',
+          height: Math.max(16, Math.min(50, drawH + 4)),
+          mathBuffer: mathRes.buffer,
+          mathWidth: drawW,
+          mathHeight: drawH,
+          isBlockMath: false
+        });
+      } else {
+        const formattedMath = renderKaTeXToReadableMath(mathCode, false);
+        const wrapped = wrapTextToLines(dCtx, formattedMath, bodyFont, 235);
+        for (const wLine of wrapped) {
+          elements.push({ type: 'text', content: wLine, height: 19, font: bodyFont });
+        }
       }
     } else {
       // Standard Markdown / Plain text lines
@@ -233,7 +449,7 @@ export function renderEInkPages(rawText: string): RenderedPagePayload {
   const totalPages = pageElementsList.length || 1;
   const pagesBase64: string[] = [];
 
-  // Render each landscape page using node-canvas with registered universal Sarabun TTF font
+  // Render each landscape page using node-canvas with composite CodeCogs math graphics
   for (let pIdx = 0; pIdx < totalPages; pIdx++) {
     const canvas = createCanvas(PAGE_WIDTH, PAGE_HEIGHT);
     const ctx = canvas.getContext('2d');
@@ -262,18 +478,36 @@ export function renderEInkPages(rawText: string): RenderedPagePayload {
     let yPos = START_Y;
 
     for (const elem of pElements) {
-      ctx.font = elem.font;
-      if (elem.type === 'header') {
-        ctx.fillText(elem.content, PADDING, yPos + 14);
-        ctx.beginPath();
-        ctx.moveTo(PADDING, yPos + 17);
-        ctx.lineTo(PADDING + ctx.measureText(elem.content).width, yPos + 17);
-        ctx.lineWidth = 1;
-        ctx.stroke();
+      if (elem.type === 'math' && elem.mathBuffer) {
+        try {
+          const img = await loadImage(elem.mathBuffer);
+          const drawW = elem.mathWidth || img.width;
+          const drawH = elem.mathHeight || img.height;
+
+          let xPos = PADDING;
+          if (elem.isBlockMath) {
+            xPos = Math.max(PADDING, Math.round((PAGE_WIDTH - drawW) / 2));
+          }
+
+          ctx.drawImage(img, xPos, yPos + 2, drawW, drawH);
+        } catch (imgErr) {
+          console.error("Failed to load CodeCogs math image onto canvas:", imgErr);
+        }
+        yPos += elem.height + 2;
       } else {
-        ctx.fillText(elem.content, PADDING, yPos + 13);
+        ctx.font = elem.font || bodyFont;
+        if (elem.type === 'header') {
+          ctx.fillText(elem.content || '', PADDING, yPos + 14);
+          ctx.beginPath();
+          ctx.moveTo(PADDING, yPos + 17);
+          ctx.lineTo(PADDING + ctx.measureText(elem.content || '').width, yPos + 17);
+          ctx.lineWidth = 1;
+          ctx.stroke();
+        } else {
+          ctx.fillText(elem.content || '', PADDING, yPos + 13);
+        }
+        yPos += elem.height + 2;
       }
-      yPos += elem.height + 2;
     }
 
     // Convert Canvas to PNG Buffer and apply 1-bit monochrome binarization
