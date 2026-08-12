@@ -290,29 +290,33 @@ export async function renderEInkPages(rawText: string): Promise<RenderedPagePayl
   <meta charset="utf-8">
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Sarabun:wght@400;700&display=swap');
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    body {
-      width: 250px;
-      height: 122px;
-      background: #ffffff;
-      color: #000000;
-      font-family: 'Sarabun', sans-serif;
-      font-size: 13px;
-      line-height: 1.35;
-      padding: 8px;
-      overflow: hidden;
-      word-break: break-word;
-      overflow-wrap: break-word;
-      white-space: pre-wrap;
+    * { box-sizing: border-box !important; margin: 0; padding: 0; }
+    html, body {
+      width: 250px !important;
+      max-width: 250px !important;
+      height: 122px !important;
+      max-height: 122px !important;
+      background: #ffffff !important;
+      color: #000000 !important;
+      font-family: 'Sarabun', sans-serif !important;
+      font-size: 13px !important;
+      line-height: 1.35 !important;
+      overflow: hidden !important;
+      word-break: break-all !important;
+      overflow-wrap: break-word !important;
+      white-space: pre-wrap !important;
     }
     .content-container {
-      width: 250px;
-      height: 122px;
-      padding: 8px;
-      box-sizing: border-box;
-      word-break: break-word;
-      overflow-wrap: break-word;
-      white-space: pre-wrap;
+      width: 250px !important;
+      max-width: 250px !important;
+      height: 122px !important;
+      max-height: 122px !important;
+      padding: 6px !important;
+      box-sizing: border-box !important;
+      word-break: break-all !important;
+      overflow-wrap: break-word !important;
+      white-space: pre-wrap !important;
+      overflow: hidden !important;
     }
     .header {
       display: flex;
@@ -325,10 +329,11 @@ export async function renderEInkPages(rawText: string): Promise<RenderedPagePayl
       font-size: 11px;
     }
     .content {
-      font-size: 13px;
-      word-break: break-word;
-      overflow-wrap: break-word;
-      white-space: pre-wrap;
+      font-size: 13px !important;
+      word-break: break-all !important;
+      overflow-wrap: break-word !important;
+      white-space: pre-wrap !important;
+      overflow: hidden !important;
     }
   </style>
 </head>
