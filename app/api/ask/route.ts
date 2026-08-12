@@ -1,5 +1,4 @@
 import { NextResponse } from 'next/server';
-import OpenAI from 'openai';
 import { getAISettings, updateAISettings, HistoryRecord, DEFAULT_AI_SETTING } from '@/lib/edge-config';
 import { uploadToDiscordWebhook } from '@/lib/discord';
 import { renderEInkPages } from '@/lib/pagination-engine';
@@ -7,15 +6,6 @@ import { isAuthorizedBoardRequest } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
-
-const openrouter = new OpenAI({
-  baseURL: "https://openrouter.ai/api/v1",
-  apiKey: process.env.OPENROUTER_API_KEY || "",
-  defaultHeaders: {
-    "HTTP-Referer": "https://aicalculate-iot.vercel.app/",
-    "X-Title": "Ai Bridge",
-  }
-});
 
 export async function POST(req: Request) {
   try {
@@ -119,26 +109,43 @@ CRITICAL FORMATTING INSTRUCTIONS FOR E-INK HARDWARE DISPLAY:
 
     const fullPromptText = `${systemInstruction}\n\n${kbSection}\n\n${userInputSection}`;
 
-    // Send payload to selected AI Model via OpenRouter
+    // Send payload to selected AI Model via OpenRouter direct HTTP API
     const imagePayloadUrl = base64DataUrl || imageUrl;
-    const response = await openrouter.chat.completions.create({
-      model: activeModel,
-      messages: [
-        {
-          role: "user",
-          content: [
-            { type: "text", text: fullPromptText },
-            {
-              type: "image_url",
-              image_url: { url: imagePayloadUrl }
-            }
-          ]
-        }
-      ],
-      max_tokens: 500,
+    const openRouterApiKey = process.env.OPENROUTER_API_KEY || "";
+
+    const openRouterRes = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${openRouterApiKey}`,
+        "Content-Type": "application/json",
+        "HTTP-Referer": "https://aicalculate-iot.vercel.app/",
+        "X-Title": "Ai Bridge"
+      },
+      body: JSON.stringify({
+        model: activeModel,
+        messages: [
+          {
+            role: "user",
+            content: [
+              { type: "text", text: fullPromptText },
+              {
+                type: "image_url",
+                image_url: { url: imagePayloadUrl }
+              }
+            ]
+          }
+        ],
+        max_tokens: 500
+      })
     });
 
-    const aiReply = response.choices[0]?.message?.content || "AI did not return any response.";
+    if (!openRouterRes.ok) {
+      const errBody = await openRouterRes.text();
+      throw new Error(`OpenRouter API Error (${openRouterRes.status}): ${errBody}`);
+    }
+
+    const openRouterData = await openRouterRes.json();
+    const aiReply = openRouterData.choices?.[0]?.message?.content || "AI did not return any response.";
 
     // Render AI text answer to 122x250 Base64 PNG E-Ink pages using pagination engine
     const einkResult = renderEInkPages(aiReply);

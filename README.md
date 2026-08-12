@@ -1,6 +1,6 @@
-# Ai Bridge — Minimal Clean Neumorphic Controller
+# Ai Bridge — Control Center
 
-A stealth hardware-software integration allowing users to capture images from a calculator-embedded ESP32 camera, process them via a Next.js command center (HQ), and receive AI-generated answers rendered into high-contrast 250x122px LANDSCAPE Base64 PNG E-Ink display pages. Built with a modern **Minimal Clean Neumorphism (Soft UI) Design System** on cool clay background (`#E0E5EC`) featuring tactile depth, clean slate typography (`#1E293B`), zero text emojis (replaced entirely with clean SVG vector icons), front-end PIN access protection, and drag-and-drop Knowledge Base document uploads. A personal project for Sikarn Pattarasirimongkol, focusing on Full-stack and IoT AI integration.
+A stealth hardware-software integration allowing users to capture images from a calculator-embedded ESP32 camera, process them via a Next.js command center (HQ), and receive AI-generated answers rendered into high-contrast 250x122px LANDSCAPE Base64 PNG E-Ink display pages. Built with a modern **Flat Design System** on canvas background (`#F3F4F6`) featuring pure solid color blocks (`#FFFFFF`, `#3B82F6`, `#10B981`, `#F59E0B`), zero artificial depth (`shadow-none`), geometric **Outfit** typography, vector SVG iconography (no text emojis), front-end PIN access protection, and drag-and-drop Knowledge Base document uploads. A personal project for Sikarn Pattarasirimongkol, focusing on Full-stack and IoT AI integration.
 
 ## Tech Stack
 
@@ -12,7 +12,7 @@ A stealth hardware-software integration allowing users to capture images from a 
 - Next.js 16 (App Router)
 - React 19
 - Tailwind CSS v4
-- **Minimal Neumorphism Design System**: Cool Clay `#E0E5EC`, Dual Opposing RGB Shadows, Sleek Dark Slate `#1E293B` primary buttons, clean SVG vector icons (no text emojis), **Plus Jakarta Sans** (Display) & **DM Sans** (Body) typography.
+- **Flat Design System**: Pure White `#FFFFFF`, Canvas `#F3F4F6`, Primary Blue `#3B82F6`, Emerald `#10B981`, Amber `#F59E0B`, Zero Box Shadows (`shadow-none`), Scale Hover Transformations (`hover:scale-105`), clean SVG vector icons (no text emojis), **Outfit** typography.
 
 ### Backend & Storage
 - Next.js API Routes (Serverless Functions)
@@ -27,8 +27,8 @@ A stealth hardware-software integration allowing users to capture images from a 
 
 ## Active Features
 
-- **Minimal Clean Neumorphism Dashboard** — Sleek tactile UI with soft 32px rounded cards, inset deep inputs/textareas, clean dark slate buttons, and zero text emojis (all UI elements use SVG vector icons).
-- **Dashboard Access PIN Lock Modal** — Front-end PIN security lock (`NEXT_PUBLIC_DASHBOARD_PIN`, fallback `"1234"`) featuring a full-screen blurred backdrop overlay, masked password input with alphanumeric support, error feedback, pointer-events & scroll locking when unauthenticated, and `sessionStorage` unlock persistence. All hardware API routes remain unaffected.
+- **Flat Design Dashboard** — Solid color blocks with 8px rounded cards, flat inputs/textareas, scale hover interaction details, clean primary blue action buttons, concise branding title ("AI BRIDGE"), and zero text emojis (all UI elements use SVG vector icons).
+- **Dashboard Access PIN Lock Modal** — Front-end PIN security lock (`NEXT_PUBLIC_DASHBOARD_PIN`, fallback `"1234"`) featuring a full-screen dark overlay, masked password input with alphanumeric support, error feedback, pointer-events & scroll locking when unauthenticated, and `sessionStorage` unlock persistence. All hardware API routes remain unaffected.
 - **Drag-and-Drop KB Upload Modal** — Interactive file upload modal for Knowledge Base slots with SVG dropzone icon, fallback file picker, strict `.txt` and `.md` file type enforcement (PDF support removed), validation toast alerts, file details preview (File Name, File Size, File Type), and instant text extraction into KB state.
 - **Secure Wi-Fi Management UI** — Shows network SSID and password status badges (`Password Saved` / `Open Network`). Allows inputting a new password to overwrite existing settings while completely hiding raw passwords.
 - **Authorization Guard & Same-Origin Web Access** — API routes (`/api/ask`, `/api/settings`, `/api/wifi-settings`) enforce strict authorization allowing both hardware board requests (via `x-board-key`) and Same-Origin Web Dashboard requests cleanly without 401 blocks.
