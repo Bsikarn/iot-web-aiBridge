@@ -39,6 +39,29 @@ export interface RenderMathResult {
 }
 
 /**
+ * Convert Markdown text (bold **, italic *, headings #) into clean HTML elements.
+ */
+function convertMarkdownToHtml(markdownText: string): string {
+  if (!markdownText) return '';
+
+  let html = markdownText
+    // Convert bold **text** or __text__ to <strong>text</strong>
+    .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+    .replace(/__(.*?)__/g, '<strong>$1</strong>')
+    // Convert italic *text* or _text_ to <em>text</em>
+    .replace(/\*(.*?)\*/g, '<em>$1</em>')
+    .replace(/_(.*?)_/g, '<em>$1</em>')
+    // Convert headings
+    .replace(/^###\s+(.*$)/gim, '<h4 style="font-weight:bold; font-size:13px; margin:2px 0;">$1</h4>')
+    .replace(/^##\s+(.*$)/gim, '<h3 style="font-weight:bold; font-size:14px; margin:2px 0;">$1</h3>')
+    .replace(/^#\s+(.*$)/gim, '<h2 style="font-weight:bold; font-size:15px; margin:2px 0;">$1</h2>')
+    // Line breaks
+    .replace(/\n/g, '<br/>');
+
+  return html;
+}
+
+/**
  * Render clean HTML content into a 250x122px PNG image buffer using Cloud HTML-to-Image API.
  */
 export async function renderHtmlToImageBuffer(htmlContent: string): Promise<Buffer | null> {
@@ -96,7 +119,6 @@ export async function renderHtmlToImageBuffer(htmlContent: string): Promise<Buff
 
 /**
  * Fetch rendered LaTeX math formula PNG image buffer from CodeCogs API.
- * Endpoint: https://latex.codecogs.com/png.latex?\dpi{150}\bg{white}%20{ENCODED_LATEX_STRING}
  */
 export async function fetchCodeCogsMathBuffer(latexCode: string): Promise<RenderMathResult | null> {
   try {
@@ -105,7 +127,7 @@ export async function fetchCodeCogsMathBuffer(latexCode: string): Promise<Render
 
     const url = `https://latex.codecogs.com/png.latex?\\dpi{150}\\bg{white}%20${encodeURIComponent(cleanLatex)}`;
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 5000); // 5-second fetch timeout
+    const timeoutId = setTimeout(() => controller.abort(), 5000);
 
     const res = await fetch(url, { signal: controller.signal });
     clearTimeout(timeoutId);
@@ -142,8 +164,8 @@ function renderKaTeXToReadableMath(rawLatex: string, displayMode = false): strin
     katex.renderToString(rawLatex, { displayMode, throwOnError: false });
 
     let text = rawLatex
-      .replace(/\\(?:mathcal|semibold|mathbb|boldsymbol|mathrm|mathbf|mathit|mathfrak|text)\{([^}]+)\}/g, '$1')
-      .replace(/\\(?:mathcal|semibold|mathbb|boldsymbol|mathrm|mathbf|mathit|mathfrak|text)\s+([a-zA-Z0-9])/g, '$1')
+      .replace(/\\(?:mathcal|mathbb|boldsymbol|mathrm|mathbf|mathit|mathfrak|text)\{([^}]+)\}/g, '$1')
+      .replace(/\\(?:mathcal|mathbb|boldsymbol|mathrm|mathbf|mathit|mathfrak|text)\s+([a-zA-Z0-9])/g, '$1')
       .replace(/\\int\\limits_\{([^}]+)\}\^\{([^}]+)\}/g, '∫[$1→$2]')
       .replace(/\\int_\{([^}]+)\}\^\{([^}]+)\}/g, '∫[$1→$2]')
       .replace(/\\int_([^\s\^]+)\^([^\s\\]+)/g, '∫[$1→$2]')
@@ -253,10 +275,22 @@ export async function renderEInkPages(rawText: string): Promise<RenderedPagePayl
       background: #ffffff;
       color: #000000;
       font-family: 'Sarabun', sans-serif;
-      font-size: 14px;
+      font-size: 13px;
       line-height: 1.35;
       padding: 6px;
       overflow: hidden;
+      word-break: break-word;
+      overflow-wrap: break-word;
+      white-space: pre-wrap;
+    }
+    .content-container {
+      width: 250px;
+      height: 122px;
+      padding: 6px;
+      box-sizing: border-box;
+      word-break: break-word;
+      overflow-wrap: break-word;
+      white-space: pre-wrap;
     }
     .header {
       display: flex;
@@ -268,16 +302,23 @@ export async function renderEInkPages(rawText: string): Promise<RenderedPagePayl
       font-weight: bold;
       font-size: 11px;
     }
-    .content { font-size: 13px; word-break: break-word; }
+    .content {
+      font-size: 13px;
+      word-break: break-word;
+      overflow-wrap: break-word;
+      white-space: pre-wrap;
+    }
   </style>
 </head>
 <body>
-  <div class="header">
-    <span>AI BRIDGE</span>
-    <span>[1/1]</span>
-  </div>
-  <div class="content">
-    ${rawText.replace(/\n/g, '<br/>')}
+  <div class="content-container">
+    <div class="header">
+      <span>AI BRIDGE</span>
+      <span>[1/1]</span>
+    </div>
+    <div class="content">
+      ${convertMarkdownToHtml(rawText)}
+    </div>
   </div>
 </body>
 </html>`;
@@ -402,23 +443,26 @@ export async function renderEInkPages(rawText: string): Promise<RenderedPagePayl
         const trimmed = line.trim();
         if (!trimmed) continue;
 
-        if (trimmed.startsWith('# ')) {
-          const wrapped = wrapTextToLines(dCtx, trimmed.replace(/^#\s+/, ''), header1Font, 235);
+        // Sanitize raw ** markdown asterisks for plain text canvas rendering
+        const cleanLine = trimmed.replace(/\*\*(.*?)\*\*/g, '$1').replace(/\*(.*?)\*/g, '$1');
+
+        if (cleanLine.startsWith('# ')) {
+          const wrapped = wrapTextToLines(dCtx, cleanLine.replace(/^#\s+/, ''), header1Font, 235);
           for (const wLine of wrapped) {
             elements.push({ type: 'header', content: wLine, height: 22, font: header1Font });
           }
-        } else if (trimmed.startsWith('## ') || trimmed.startsWith('### ')) {
-          const wrapped = wrapTextToLines(dCtx, trimmed.replace(/^#{2,3}\s+/, ''), header2Font, 235);
+        } else if (cleanLine.startsWith('## ') || cleanLine.startsWith('### ')) {
+          const wrapped = wrapTextToLines(dCtx, cleanLine.replace(/^#{2,3}\s+/, ''), header2Font, 235);
           for (const wLine of wrapped) {
             elements.push({ type: 'header', content: wLine, height: 21, font: header2Font });
           }
-        } else if (trimmed.startsWith('- ') || trimmed.startsWith('* ') || trimmed.startsWith('• ')) {
-          const wrapped = wrapTextToLines(dCtx, '• ' + trimmed.replace(/^[-*•]\s+/, ''), bodyFont, 235);
+        } else if (cleanLine.startsWith('- ') || cleanLine.startsWith('* ') || cleanLine.startsWith('• ')) {
+          const wrapped = wrapTextToLines(dCtx, '• ' + cleanLine.replace(/^[-*•]\s+/, ''), bodyFont, 235);
           for (const wLine of wrapped) {
             elements.push({ type: 'bullet', content: wLine, height: 19, font: bodyFont });
           }
         } else {
-          const wrapped = wrapTextToLines(dCtx, trimmed, bodyFont, 235);
+          const wrapped = wrapTextToLines(dCtx, cleanLine, bodyFont, 235);
           for (const wLine of wrapped) {
             elements.push({ type: 'text', content: wLine, height: 19, font: bodyFont });
           }
