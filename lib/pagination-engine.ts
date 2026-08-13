@@ -13,9 +13,9 @@ export interface RenderedPagePayload {
 // Hardware Display Specifications (Waveshare 2.13-inch E-Ink Landscape)
 const PAGE_WIDTH = 250;  // Landscape Width
 const PAGE_HEIGHT = 122; // Landscape Height
-const PADDING = 6;       // Border Padding
-const MAX_Y = PAGE_HEIGHT - PADDING; // 116px Usable Height
-const START_Y = 20;      // Leave top space for header badge [1/N]
+const PADDING = 4;       // Border Padding
+const MAX_Y = PAGE_HEIGHT - 2; // Usable Height
+const START_Y = 4;       // Maximized content area (starts directly at top)
 
 // Register Universal Sarabun TTF font covering Thai, English, Numbers & Math symbols
 let isFontRegistered = false;
@@ -296,6 +296,8 @@ export async function renderEInkPages(rawText: string): Promise<RenderedPagePayl
       max-width: 250px !important;
       height: 122px !important;
       max-height: 122px !important;
+      margin: 0 !important;
+      padding: 0 !important;
       background: #ffffff !important;
       color: #000000 !important;
       font-family: 'Sarabun', sans-serif !important;
@@ -311,22 +313,15 @@ export async function renderEInkPages(rawText: string): Promise<RenderedPagePayl
       max-width: 250px !important;
       height: 122px !important;
       max-height: 122px !important;
-      padding: 6px !important;
+      margin: 0 !important;
+      padding: 2px 4px !important;
       box-sizing: border-box !important;
       word-break: break-all !important;
       overflow-wrap: break-word !important;
       white-space: pre-wrap !important;
       overflow: hidden !important;
-    }
-    .header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      border-bottom: 1px solid #000000;
-      padding-bottom: 2px;
-      margin-bottom: 4px;
-      font-weight: bold;
-      font-size: 11px;
+      background: #ffffff !important;
+      color: #000000 !important;
     }
     .content {
       font-size: 13px !important;
@@ -339,10 +334,6 @@ export async function renderEInkPages(rawText: string): Promise<RenderedPagePayl
 </head>
 <body>
   <div class="content-container">
-    <div class="header">
-      <span>AI BRIDGE</span>
-      <span>[1/1]</span>
-    </div>
     <div class="content">
       ${convertMarkdownToHtml(formattedRawText)}
     </div>
@@ -411,7 +402,7 @@ export async function renderEInkPages(rawText: string): Promise<RenderedPagePayl
       if (mathRes) {
         let drawW = mathRes.width;
         let drawH = mathRes.height;
-        const maxW = 235;
+        const maxW = 240;
         if (drawW > maxW) {
           const ratio = maxW / drawW;
           drawW = maxW;
@@ -427,7 +418,7 @@ export async function renderEInkPages(rawText: string): Promise<RenderedPagePayl
         });
       } else {
         const formattedMath = renderKaTeXToReadableMath(mathCode, true);
-        const wrapped = wrapTextToLines(dCtx, formattedMath, mathFont, 235);
+        const wrapped = wrapTextToLines(dCtx, formattedMath, mathFont, 240);
         for (const wLine of wrapped) {
           elements.push({ type: 'text', content: wLine, height: 20, font: mathFont });
         }
@@ -442,7 +433,7 @@ export async function renderEInkPages(rawText: string): Promise<RenderedPagePayl
       if (mathRes) {
         let drawW = mathRes.width;
         let drawH = mathRes.height;
-        const maxW = 235;
+        const maxW = 240;
         if (drawW > maxW) {
           const ratio = maxW / drawW;
           drawW = maxW;
@@ -458,7 +449,7 @@ export async function renderEInkPages(rawText: string): Promise<RenderedPagePayl
         });
       } else {
         const formattedMath = renderKaTeXToReadableMath(mathCode, false);
-        const wrapped = wrapTextToLines(dCtx, formattedMath, bodyFont, 235);
+        const wrapped = wrapTextToLines(dCtx, formattedMath, bodyFont, 240);
         for (const wLine of wrapped) {
           elements.push({ type: 'text', content: wLine, height: 19, font: bodyFont });
         }
@@ -474,22 +465,22 @@ export async function renderEInkPages(rawText: string): Promise<RenderedPagePayl
         const cleanLine = trimmed.replace(/\*\*(.*?)\*\*/g, '$1').replace(/\*(.*?)\*/g, '$1');
 
         if (cleanLine.startsWith('# ')) {
-          const wrapped = wrapTextToLines(dCtx, cleanLine.replace(/^#\s+/, ''), header1Font, 235);
+          const wrapped = wrapTextToLines(dCtx, cleanLine.replace(/^#\s+/, ''), header1Font, 240);
           for (const wLine of wrapped) {
             elements.push({ type: 'header', content: wLine, height: 22, font: header1Font });
           }
         } else if (cleanLine.startsWith('## ') || cleanLine.startsWith('### ')) {
-          const wrapped = wrapTextToLines(dCtx, cleanLine.replace(/^#{2,3}\s+/, ''), header2Font, 235);
+          const wrapped = wrapTextToLines(dCtx, cleanLine.replace(/^#{2,3}\s+/, ''), header2Font, 240);
           for (const wLine of wrapped) {
             elements.push({ type: 'header', content: wLine, height: 21, font: header2Font });
           }
         } else if (cleanLine.startsWith('- ') || cleanLine.startsWith('* ') || cleanLine.startsWith('• ')) {
-          const wrapped = wrapTextToLines(dCtx, '• ' + cleanLine.replace(/^[-*•]\s+/, ''), bodyFont, 235);
+          const wrapped = wrapTextToLines(dCtx, '• ' + cleanLine.replace(/^[-*•]\s+/, ''), bodyFont, 240);
           for (const wLine of wrapped) {
             elements.push({ type: 'bullet', content: wLine, height: 19, font: bodyFont });
           }
         } else {
-          const wrapped = wrapTextToLines(dCtx, cleanLine, bodyFont, 235);
+          const wrapped = wrapTextToLines(dCtx, cleanLine, bodyFont, 240);
           for (const wLine of wrapped) {
             elements.push({ type: 'text', content: wLine, height: 19, font: bodyFont });
           }
@@ -532,18 +523,6 @@ export async function renderEInkPages(rawText: string): Promise<RenderedPagePayl
     // Default black stroke and fill
     ctx.fillStyle = '#000000';
     ctx.strokeStyle = '#000000';
-
-    // Header divider line and badge [1/N]
-    ctx.beginPath();
-    ctx.moveTo(PADDING, 14);
-    ctx.lineTo(PAGE_WIDTH - PADDING, 14);
-    ctx.lineWidth = 1;
-    ctx.stroke();
-
-    ctx.font = 'bold 12px "Sarabun", "Segoe UI", Arial, sans-serif';
-    ctx.textAlign = 'right';
-    ctx.fillText(`[${pIdx + 1}/${totalPages}]`, PAGE_WIDTH - PADDING, 11);
-    ctx.textAlign = 'left';
 
     const pElements = pageElementsList[pIdx] || [];
     let yPos = START_Y;
@@ -625,10 +604,6 @@ function createEmptyPagePayload(message: string): RenderedPagePayload {
   ctx.strokeStyle = '#000000';
   ctx.font = '16px "Sarabun", "Segoe UI", Arial, sans-serif';
   ctx.fillText(message, PADDING, START_Y + 14);
-
-  ctx.font = 'bold 12px "Sarabun", "Segoe UI", Arial, sans-serif';
-  ctx.textAlign = 'right';
-  ctx.fillText('[1/1]', PAGE_WIDTH - PADDING, 11);
 
   const canvasBuffer = canvas.toBuffer('image/png');
   const png = PNG.sync.read(canvasBuffer);
