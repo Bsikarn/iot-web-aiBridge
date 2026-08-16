@@ -99,20 +99,31 @@ export async function POST(req: Request) {
 
 CRITICAL FORMATTING INSTRUCTIONS FOR E-INK HARDWARE DISPLAY:
 1. STRICTLY FORBID MATH DELIMITERS FOR SINGLE VARIABLES: Never wrap single variables, letters, numbers, coefficients, or simple terms in dollar signs (do NOT write $x$, $y$, $n$, $a$, or $1$). Always write single variables and plain text identifiers as regular plain text characters (write x, y, n, a normally without any $ or $$ symbols).
-2. WRITE STANDARD CLEAN LATEX: Write standard, clean LaTeX without using obscure font macro wrappers like \\mathcal, \\mathfrak, \\mathbb, or custom packages.
+2. WRITE STANDARD CLEAN LATEX: Write standard, clean LaTeX without using obscure font macro wrappers like \\mathcal, \\mathbb, \\boldsymbol, \\mathrm, or custom packages.
 3. UNIFORM TYPOGRAPHY: Use standard regular-weight plain text and markdown formatting so all text renders cleanly at a uniform weight on the monochrome E-Ink hardware screen. Only use LaTeX math wrappers ($...$ or $$...$$) for complex multi-term equations.`;
 
-    const kbSection = activeKb.trim()
-      ? `<knowledge_base>\n${activeKb.trim()}\n</knowledge_base>`
-      : `<knowledge_base>\nNo additional context provided.\n</knowledge_base>`;
+    const kbText = activeKb.trim() ? activeKb.trim() : "No additional context provided.";
+    const userPromptText = `[Prompt #${promptNum}]: ${activePrompt.trim()}`;
 
-    const userInputSection = `<user_input>\n[Prompt #${promptNum}]: ${activePrompt.trim()}\n</user_input>`;
-
-    const fullPromptText = `${systemInstruction}\n\n${kbSection}\n\n${userInputSection}`;
-
-    // Send payload to selected AI Model via OpenRouter direct HTTP API
+    // Send payload to selected AI Model via OpenRouter direct HTTP API with Prompt Caching support
     const imagePayloadUrl = base64DataUrl || imageUrl;
     const openRouterApiKey = process.env.OPENROUTER_API_KEY || "";
+
+    const userContentBlocks: any[] = [
+      {
+        type: "text",
+        text: `<knowledge_base>\n${kbText}\n</knowledge_base>`,
+        cache_control: { type: "ephemeral" }
+      },
+      {
+        type: "text",
+        text: `<user_input>\n${userPromptText}\n</user_input>`
+      },
+      {
+        type: "image_url",
+        image_url: { url: imagePayloadUrl }
+      }
+    ];
 
     const openRouterRes = await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: "POST",
@@ -126,14 +137,18 @@ CRITICAL FORMATTING INSTRUCTIONS FOR E-INK HARDWARE DISPLAY:
         model: activeModel,
         messages: [
           {
-            role: "user",
+            role: "system",
             content: [
-              { type: "text", text: fullPromptText },
               {
-                type: "image_url",
-                image_url: { url: imagePayloadUrl }
+                type: "text",
+                text: systemInstruction,
+                cache_control: { type: "ephemeral" }
               }
             ]
+          },
+          {
+            role: "user",
+            content: userContentBlocks
           }
         ],
         max_tokens: 500
