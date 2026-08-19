@@ -57,6 +57,7 @@ hardware coding git : https://github.com/Bsikarn/iot-board-aiBridge
 
 ## ⚡ Active Features
 
+- **Multi-Image Processing (Up to 4 Sequential Images)** — `/api/ask` now supports receiving and extracting up to 4 sequential image uploads (`images`, `image_1` through `image_4`, or `image_urls`). Uploads each image to Discord CDN and constructs a sequential multimodal payload for OpenRouter LLMs to synthesize multi-page problem snapshots into a unified solution.
 - **Knowledge Base Fallback Logic & Max Execution Timeout (300s)** — Configured `export const maxDuration = 300;` on `/api/ask` for seamless deep-reasoning execution (DeepSeek R1, OpenAI o1). Updated system instructions so that Knowledge Base (`<knowledge_base>`) serves as the primary prioritized source, but automatically falls back to general AI domain reasoning if context is missing—never refusing an answer.
 - **Anthropic & OpenRouter Prompt Caching (`cache_control: ephemeral`)** — Integrates native Anthropic and OpenRouter Prompt Caching on System Instructions and Knowledge Base (`<knowledge_base>`) content blocks. Reduces input token costs by up to **90%** and significantly lowers response latency during repeated queries.
 - **Flat Design Dashboard** — Solid color blocks with 8px rounded cards, flat inputs/textareas, scale hover interaction details, clean primary blue action buttons, concise branding title ("AI BRIDGE"), and zero text emojis (all UI elements use SVG vector icons).
