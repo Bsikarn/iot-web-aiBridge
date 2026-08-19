@@ -6,6 +6,7 @@ import { isAuthorizedBoardRequest } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
+export const maxDuration = 300;
 
 export async function POST(req: Request) {
   try {
@@ -94,8 +95,8 @@ export async function POST(req: Request) {
       }
     }
 
-    // Enforce Structured Context Wrapping using XML tags and System Instructions forbidding variable math delimiters
-    const systemInstruction = `System Directive: Analyze the attached image and answer the user query concisely. You MUST strictly rely on the information provided inside <knowledge_base> tags to answer the question or solve the problem whenever applicable.
+    // Enforce Structured Context Wrapping using XML tags and System Instructions with KB fallback
+    const systemInstruction = `System Directive: Analyze the attached image and answer the user query concisely. Use the information inside <knowledge_base> as the PRIMARY and prioritized source of truth. However, if the question or image content is NOT fully covered in the knowledge base, you MUST seamlessly fall back to your general reasoning, broad knowledge, and advanced domain expertise to solve, compute, and answer the problem completely. Never refuse or say 'not found in knowledge base'.
 
 CRITICAL FORMATTING INSTRUCTIONS FOR E-INK HARDWARE DISPLAY:
 1. STRICTLY FORBID MATH DELIMITERS FOR SINGLE VARIABLES: Never wrap single variables, letters, numbers, coefficients, or simple terms in dollar signs (do NOT write $x$, $y$, $n$, $a$, or $1$). Always write single variables and plain text identifiers as regular plain text characters (write x, y, n, a normally without any $ or $$ symbols).
