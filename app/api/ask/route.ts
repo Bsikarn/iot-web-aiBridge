@@ -190,7 +190,7 @@ CRITICAL FORMATTING INSTRUCTIONS FOR E-INK HARDWARE DISPLAY:
                 content: userContentBlocks
               }
             ],
-            max_tokens: 500
+            stream: false
           })
         });
 

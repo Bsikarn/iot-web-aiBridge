@@ -50,7 +50,7 @@ hardware coding git : https://github.com/Bsikarn/iot-board-aiBridge
 - Discord Webhook CDN (Free Image Hosting & Snapshot Audit Log)
 
 ### Tools & Libraries
-- OpenRouter Native HTTP Fetch API (Claude 3.5, GPT-4o, Gemini 2.5, DeepSeek) with Ephemeral Prompt Caching
+- OpenRouter Native HTTP Fetch API (Claude 3.5/3.7, GPT-4o/5.6, Gemini 2.5, DeepSeek R1) with Ephemeral Prompt Caching & Uncapped Output Token Capacity (`stream: false`)
 - Cloud HTML-to-Image API (`HCTI` / `HTMLCSSTOIMAGE`) & CodeCogs LaTeX API for generating high-contrast 250x122px PNG E-Ink pages with bulletproof fallbacks
 
 ---
