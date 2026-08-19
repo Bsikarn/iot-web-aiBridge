@@ -37,18 +37,44 @@ export async function POST(req: Request) {
       promptIndexRaw = (formData.get('prompt_index') as string) || '1';
       kbIndexRaw = (formData.get('kb_index') as string) || '1';
 
-      // Check formData.getAll('images') first
-      const imagesArray = formData.getAll('images').filter((item): item is File => item instanceof File);
-      
-      // Also check individual keys image_1, image_2, image_3, image_4 or fallback image
-      const individualImages = [
-        formData.get('image_1') || formData.get('image'),
+      // Priority 1: Extract images strictly by exact keys image_1, image_2, image_3, image_4
+      const keyFiles = [
+        formData.get('image_1'),
         formData.get('image_2'),
         formData.get('image_3'),
         formData.get('image_4')
-      ].filter((item): item is File => item instanceof File);
+      ].filter((item): item is File => item instanceof File && item.size > 0);
 
-      const targetFiles = imagesArray.length > 0 ? imagesArray.slice(0, 4) : individualImages.slice(0, 4);
+      const rawFilesList: File[] = [];
+
+      if (keyFiles.length > 0) {
+        rawFilesList.push(...keyFiles);
+      } else {
+        // Priority 2: formData.getAll('images') or single fallback 'image'
+        const allImages = formData.getAll('images').filter((item): item is File => item instanceof File && item.size > 0);
+        if (allImages.length > 0) {
+          rawFilesList.push(...allImages);
+        } else {
+          const fallbackImg = formData.get('image');
+          if (fallbackImg instanceof File && fallbackImg.size > 0) {
+            rawFilesList.push(fallbackImg);
+          }
+        }
+      }
+
+      // Deduplicate identical images by checking name, size, and mime type
+      const seenFiles = new Set<string>();
+      const uniqueFiles: File[] = [];
+
+      for (const file of rawFilesList) {
+        const fileKey = `${file.name}_${file.size}_${file.type}`;
+        if (!seenFiles.has(fileKey)) {
+          seenFiles.add(fileKey);
+          uniqueFiles.push(file);
+        }
+      }
+
+      const targetFiles = uniqueFiles.slice(0, 4);
 
       // Convert File objects to ArrayBuffer early before returning 202 response
       for (const file of targetFiles) {
@@ -67,7 +93,7 @@ export async function POST(req: Request) {
       kbIndexRaw = String(body.kb_index || '1');
 
       if (Array.isArray(body.image_urls)) {
-        jsonImageUrls = body.image_urls.slice(0, 4);
+        jsonImageUrls = Array.from(new Set(body.image_urls as string[])).slice(0, 4);
       } else if (body.image_url || body.image) {
         jsonImageUrls = [body.image_url || body.image];
       }
@@ -249,8 +275,7 @@ CRITICAL FORMATTING INSTRUCTIONS FOR E-INK HARDWARE DISPLAY:
       }
     };
 
-    // Schedule background task execution via Next.js after() and @vercel/functions waitUntil()
-    after(runBackgroundTask);
+    // Schedule background task execution via SINGLE waitUntil call to prevent duplicate LLM calls and duplicate Discord uploads
     waitUntil(runBackgroundTask());
 
     // IMMEDIATELY Return HTTP 202 Accepted with task_id
