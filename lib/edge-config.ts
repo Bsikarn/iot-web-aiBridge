@@ -18,10 +18,17 @@ export interface WiFiNetwork {
   priority: number;
 }
 
+export interface ModelSlotConfig {
+  name: string;          // Custom Display Name / Label (e.g., "Sol+Sonnet", "Claude-Ckt")
+  model_primary: string; // Primary OpenRouter Model ID
+  model_secondary?: string; // Optional Secondary OpenRouter Model ID for parallel execution
+}
+
 export interface AISetting {
   prompts: string[];
   kbs: string[];
-  models: string[]; // 10 AI Model slots (Model Slot #1 to #10)
+  models: string[]; // 10 AI Model primary IDs (for backward compatibility)
+  model_slots?: ModelSlotConfig[]; // 10 Model slot configurations
   history: HistoryRecord[];
   wifi_networks?: WiFiNetwork[];
 }
@@ -31,6 +38,19 @@ export interface UpdateResult {
   error?: string;
   status?: number;
 }
+
+export const DEFAULT_MODEL_SLOTS: ModelSlotConfig[] = [
+  { name: "Gemini 2.5 Flash", model_primary: "google/gemini-2.5-flash", model_secondary: "" },
+  { name: "GPT-4o Mini", model_primary: "openai/gpt-4o-mini", model_secondary: "" },
+  { name: "Claude 3.5 Haiku", model_primary: "anthropic/claude-3-5-haiku", model_secondary: "" },
+  { name: "Gemini 2.0 Flash", model_primary: "google/gemini-2.0-flash-lite", model_secondary: "" },
+  { name: "GPT-4o", model_primary: "openai/gpt-4o", model_secondary: "" },
+  { name: "Claude 3 Haiku", model_primary: "anthropic/claude-3-haiku", model_secondary: "" },
+  { name: "DeepSeek R1", model_primary: "deepseek/deepseek-r1", model_secondary: "" },
+  { name: "Llama 3.3 70B", model_primary: "meta-llama/llama-3.3-70b-instruct", model_secondary: "" },
+  { name: "Mistral Small", model_primary: "mistralai/mistral-small-24b-instruct-2501", model_secondary: "" },
+  { name: "Qwen 2.5 Coder", model_primary: "qwen/qwen-2.5-coder-32b-instruct", model_secondary: "" }
+];
 
 export const DEFAULT_AI_SETTING: AISetting = {
   prompts: [
@@ -50,18 +70,8 @@ export const DEFAULT_AI_SETTING: AISetting = {
     "",
     ""
   ],
-  models: [
-    "google/gemini-2.5-flash",
-    "openai/gpt-4o-mini",
-    "anthropic/claude-3-5-haiku",
-    "google/gemini-2.0-flash-lite",
-    "openai/gpt-4o",
-    "anthropic/claude-3-haiku",
-    "deepseek/deepseek-r1",
-    "meta-llama/llama-3.3-70b-instruct",
-    "mistralai/mistral-small-24b-instruct-2501",
-    "qwen/qwen-2.5-coder-32b-instruct"
-  ],
+  models: DEFAULT_MODEL_SLOTS.map(s => s.model_primary),
+  model_slots: DEFAULT_MODEL_SLOTS,
   history: [],
   wifi_networks: [
     {
@@ -98,6 +108,18 @@ export async function getAISettings(): Promise<AISetting> {
             ...DEFAULT_AI_SETTING.models.slice(3)
           ];
         }
+
+        // Ensure model_slots is normalized as 10 slot objects
+        remoteData.model_slots = Array.from({ length: 10 }, (_, i) => {
+          const existingSlot = remoteData.model_slots?.[i];
+          const primaryModel = remoteData.models?.[i] || DEFAULT_MODEL_SLOTS[i].model_primary;
+          return {
+            name: existingSlot?.name || DEFAULT_MODEL_SLOTS[i].name,
+            model_primary: existingSlot?.model_primary || primaryModel,
+            model_secondary: existingSlot?.model_secondary || ""
+          };
+        });
+
         if (!remoteData.wifi_networks) {
           remoteData.wifi_networks = [...(DEFAULT_AI_SETTING.wifi_networks || [])];
         }
@@ -107,6 +129,15 @@ export async function getAISettings(): Promise<AISetting> {
     }
   } catch (error) {
     console.warn("[Global Config] Error fetching 'ai_setting', using fallback:", error);
+  }
+
+  // Ensure local memory cache also has model_slots normalized
+  if (!localMemoryCache.model_slots || localMemoryCache.model_slots.length < 10) {
+    localMemoryCache.model_slots = Array.from({ length: 10 }, (_, i) => ({
+      name: localMemoryCache.model_slots?.[i]?.name || DEFAULT_MODEL_SLOTS[i].name,
+      model_primary: localMemoryCache.models?.[i] || DEFAULT_MODEL_SLOTS[i].model_primary,
+      model_secondary: localMemoryCache.model_slots?.[i]?.model_secondary || ""
+    }));
   }
 
   return localMemoryCache;
@@ -120,21 +151,17 @@ export async function updateAISettings(data: AISetting): Promise<UpdateResult> {
   const prompts = Array.from({ length: 10 }, (_, i) => data.prompts[i] || "");
   const kbs = Array.from({ length: 3 }, (_, i) => data.kbs[i] || "");
 
-  let models: string[] = [];
-  if (Array.isArray(data.models)) {
-    models = Array.from({ length: 10 }, (_, i) => data.models[i] || DEFAULT_AI_SETTING.models[i] || "");
-  } else if (data.models && typeof data.models === 'object') {
-    const legacy = data.models as any;
-    models = [
-      legacy.gemini || DEFAULT_AI_SETTING.models[0],
-      legacy.gpt || DEFAULT_AI_SETTING.models[1],
-      legacy.claude || DEFAULT_AI_SETTING.models[2],
-      ...DEFAULT_AI_SETTING.models.slice(3)
-    ];
-  } else {
-    models = [...DEFAULT_AI_SETTING.models];
-  }
+  const model_slots: ModelSlotConfig[] = Array.from({ length: 10 }, (_, i) => {
+    const slot = data.model_slots?.[i];
+    const fallbackPrimary = data.models?.[i] || DEFAULT_MODEL_SLOTS[i].model_primary;
+    return {
+      name: slot?.name?.trim() || DEFAULT_MODEL_SLOTS[i].name,
+      model_primary: slot?.model_primary?.trim() || fallbackPrimary,
+      model_secondary: slot?.model_secondary?.trim() || ""
+    };
+  });
 
+  const models: string[] = model_slots.map(s => s.model_primary);
   const history = (data.history || []).slice(0, 3); // Max 3 records
   const wifi_networks = (data.wifi_networks || []).sort((a, b) => a.priority - b.priority);
 
@@ -142,6 +169,7 @@ export async function updateAISettings(data: AISetting): Promise<UpdateResult> {
     prompts,
     kbs,
     models,
+    model_slots,
     history,
     wifi_networks
   };

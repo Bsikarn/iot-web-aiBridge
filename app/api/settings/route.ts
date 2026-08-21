@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getAISettings, updateAISettings, AISetting, DEFAULT_AI_SETTING, WiFiNetwork } from '@/lib/edge-config';
+import { getAISettings, updateAISettings, AISetting, DEFAULT_AI_SETTING, DEFAULT_MODEL_SLOTS, ModelSlotConfig, WiFiNetwork } from '@/lib/edge-config';
 import { isAuthorizedBoardRequest } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
@@ -19,26 +19,37 @@ export async function GET(req: Request) {
     const settings = await getAISettings();
     const wifiNetworks = (settings.wifi_networks || []).sort((a, b) => a.priority - b.priority);
     
-    // Construct full map of command slots for hardware board auto-discovery
+    // Construct custom model slots mapping & dictionary for hardware auto-discovery
+    const modelsDict: Record<string, string> = {};
+    const modelsList: { index: number; name: string }[] = [];
+
+    const modelSlots = Array.from({ length: 10 }, (_, i) => {
+      const slot = settings.model_slots?.[i] || {
+        name: DEFAULT_MODEL_SLOTS[i].name,
+        model_primary: settings.models?.[i] || DEFAULT_MODEL_SLOTS[i].model_primary,
+        model_secondary: ""
+      };
+      modelsDict[String(i + 1)] = slot.name;
+      modelsList.push({
+        index: i + 1,
+        name: slot.name
+      });
+      return {
+        index: i + 1,
+        ...slot
+      };
+    });
+
     const slots = Array.from({ length: 10 }, (_, i) => {
       const promptText = settings.prompts?.[i] || "";
-      const modelName = settings.models?.[i] || DEFAULT_AI_SETTING.models[i] || "";
+      const slotName = modelSlots[i].name;
       const customName = promptText ? promptText.slice(0, 20).trim() : `Slot #${i + 1}`;
       
       return {
         index: i + 1,
         name: customName,
         prompt: promptText,
-        model: modelName
-      };
-    });
-
-    // Construct explicit models list for hardware board auto-discovery
-    const modelsList = Array.from({ length: 10 }, (_, i) => {
-      const modelName = settings.models?.[i] || DEFAULT_AI_SETTING.models[i] || `Model #${i + 1}`;
-      return {
-        index: i + 1,
-        name: modelName
+        model: slotName
       };
     });
 
@@ -46,10 +57,13 @@ export async function GET(req: Request) {
       success: true,
       data: {
         ...settings,
+        model_slots: modelSlots,
         wifi_networks: wifiNetworks
       },
       slots: slots,
-      models: modelsList,
+      models: modelsDict, // Object dictionary format { "1": "Sol+Sonnet", "2": "Claude-Ckt", ... }
+      models_list: modelsList, // Array format [ { index: 1, name: "Sol+Sonnet" }, ... ]
+      model_slots: modelSlots,
       wifi_networks: wifiNetworks
     });
   } catch (error: any) {
@@ -86,19 +100,21 @@ export async function POST(req: Request) {
     const newPrompts = Array.isArray(body.prompts) ? body.prompts : currentSettings.prompts;
     const newKbs = Array.isArray(body.kbs) ? body.kbs : currentSettings.kbs;
     
-    let newModels: string[] = [];
-    if (Array.isArray(body.models)) {
-      newModels = Array.from({ length: 10 }, (_, i) => body.models[i] || currentSettings.models[i] || DEFAULT_AI_SETTING.models[i]);
-    } else if (body.models && typeof body.models === 'object') {
-      newModels = [
-        body.models.gemini || currentSettings.models[0] || DEFAULT_AI_SETTING.models[0],
-        body.models.gpt || currentSettings.models[1] || DEFAULT_AI_SETTING.models[1],
-        body.models.claude || currentSettings.models[2] || DEFAULT_AI_SETTING.models[2],
-        ...currentSettings.models.slice(3)
-      ];
-    } else {
-      newModels = currentSettings.models;
-    }
+    let newModelSlots = Array.isArray(body.model_slots)
+      ? Array.from({ length: 10 }, (_, i) => ({
+          name: body.model_slots[i]?.name || DEFAULT_MODEL_SLOTS[i].name,
+          model_primary: body.model_slots[i]?.model_primary || DEFAULT_MODEL_SLOTS[i].model_primary,
+          model_secondary: body.model_slots[i]?.model_secondary || ""
+        }))
+      : Array.isArray(body.models)
+      ? Array.from({ length: 10 }, (_, i) => ({
+          name: currentSettings.model_slots?.[i]?.name || DEFAULT_MODEL_SLOTS[i].name,
+          model_primary: body.models[i] || currentSettings.models[i] || DEFAULT_MODEL_SLOTS[i].model_primary,
+          model_secondary: currentSettings.model_slots?.[i]?.model_secondary || ""
+        }))
+      : (currentSettings.model_slots || DEFAULT_MODEL_SLOTS);
+
+    const newModels = newModelSlots.map((s: ModelSlotConfig) => s.model_primary);
 
     const newWifiNetworks: WiFiNetwork[] = Array.isArray(body.wifi_networks)
       ? body.wifi_networks
@@ -108,6 +124,7 @@ export async function POST(req: Request) {
       prompts: newPrompts,
       kbs: newKbs,
       models: newModels,
+      model_slots: newModelSlots,
       history: currentSettings.history || [],
       wifi_networks: newWifiNetworks
     };

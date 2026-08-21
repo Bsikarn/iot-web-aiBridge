@@ -25,10 +25,17 @@ interface WiFiNetwork {
   priority: number;
 }
 
+interface ModelSlotConfig {
+  name: string;
+  model_primary: string;
+  model_secondary?: string;
+}
+
 interface AISetting {
   prompts: string[];
   kbs: string[];
   models: string[];
+  model_slots?: ModelSlotConfig[];
   history: HistoryRecord[];
   wifi_networks?: WiFiNetwork[];
 }
@@ -46,10 +53,24 @@ const PRESET_MODELS = [
   "qwen/qwen-2.5-coder-32b-instruct"
 ];
 
+const DEFAULT_SLOTS: ModelSlotConfig[] = [
+  { name: "Gemini 2.5 Flash", model_primary: "google/gemini-2.5-flash", model_secondary: "" },
+  { name: "GPT-4o Mini", model_primary: "openai/gpt-4o-mini", model_secondary: "" },
+  { name: "Claude 3.5 Haiku", model_primary: "anthropic/claude-3-5-haiku", model_secondary: "" },
+  { name: "Gemini 2.0 Flash", model_primary: "google/gemini-2.0-flash-lite", model_secondary: "" },
+  { name: "GPT-4o", model_primary: "openai/gpt-4o", model_secondary: "" },
+  { name: "Claude 3 Haiku", model_primary: "anthropic/claude-3-haiku", model_secondary: "" },
+  { name: "DeepSeek R1", model_primary: "deepseek/deepseek-r1", model_secondary: "" },
+  { name: "Llama 3.3 70B", model_primary: "meta-llama/llama-3.3-70b-instruct", model_secondary: "" },
+  { name: "Mistral Small", model_primary: "mistralai/mistral-small-24b-instruct-2501", model_secondary: "" },
+  { name: "Qwen 2.5 Coder", model_primary: "qwen/qwen-2.5-coder-32b-instruct", model_secondary: "" }
+];
+
 export default function Dashboard() {
   const [prompts, setPrompts] = useState<string[]>(Array(10).fill(""));
   const [kbs, setKbs] = useState<string[]>(Array(3).fill(""));
   const [models, setModels] = useState<string[]>(PRESET_MODELS);
+  const [modelSlots, setModelSlots] = useState<ModelSlotConfig[]>(DEFAULT_SLOTS);
   const [history, setHistory] = useState<HistoryRecord[]>([]);
   const [wifiNetworks, setWifiNetworks] = useState<WiFiNetwork[]>([]);
 
@@ -180,7 +201,7 @@ export default function Dashboard() {
     
     setKbs(updatedKbs);
     closeKbModal();
-    await handleSave(prompts, updatedKbs, models, wifiNetworks);
+    await handleSave(prompts, updatedKbs, modelSlots, wifiNetworks);
   };
 
   // Load configuration from settings API
@@ -214,9 +235,19 @@ export default function Dashboard() {
 
         const normalizedWifi = (d.wifi_networks || []).sort((a, b) => a.priority - b.priority);
 
+        const normalizedSlots: ModelSlotConfig[] = Array.from({ length: 10 }, (_, i) => {
+          const s = d.model_slots?.[i];
+          return {
+            name: s?.name || DEFAULT_SLOTS[i].name,
+            model_primary: s?.model_primary || normalizedModels[i] || DEFAULT_SLOTS[i].model_primary,
+            model_secondary: s?.model_secondary || ""
+          };
+        });
+
         setPrompts(normalizedPrompts);
         setKbs(normalizedKbs);
         setModels(normalizedModels);
+        setModelSlots(normalizedSlots);
         setHistory(d.history || []);
         setWifiNetworks(normalizedWifi);
         setNewPriority(normalizedWifi.length + 1);
@@ -236,7 +267,7 @@ export default function Dashboard() {
   const handleSave = async (
     updatedPrompts = prompts,
     updatedKbs = kbs,
-    updatedModels = models,
+    updatedSlots = modelSlots,
     updatedWifi = wifiNetworks
   ) => {
     setSaving(true);
@@ -245,13 +276,19 @@ export default function Dashboard() {
     try {
       const safePrompts = Array.from({ length: 10 }, (_, i) => updatedPrompts[i] || "");
       const safeKbs = Array.from({ length: 3 }, (_, i) => updatedKbs[i] || "");
-      const safeModels = Array.from({ length: 10 }, (_, i) => updatedModels[i] || PRESET_MODELS[i] || "");
+      const safeSlots: ModelSlotConfig[] = Array.from({ length: 10 }, (_, i) => ({
+        name: updatedSlots[i]?.name?.trim() || DEFAULT_SLOTS[i].name,
+        model_primary: updatedSlots[i]?.model_primary?.trim() || DEFAULT_SLOTS[i].model_primary,
+        model_secondary: updatedSlots[i]?.model_secondary?.trim() || ""
+      }));
+      const safeModels = safeSlots.map(s => s.model_primary);
       const safeWifi = [...updatedWifi].sort((a, b) => a.priority - b.priority);
 
       const payload = {
         prompts: safePrompts,
         kbs: safeKbs,
         models: safeModels,
+        model_slots: safeSlots,
         wifi_networks: safeWifi
       };
 
@@ -317,7 +354,7 @@ export default function Dashboard() {
     setNewUsername("");
     setNewPriority(updated.length + 1);
 
-    await handleSave(prompts, kbs, models, updated);
+    await handleSave(prompts, kbs, modelSlots, updated);
   };
 
   const handleUpdateWifiNetwork = (index: number, field: keyof WiFiNetwork, value: any) => {
@@ -333,7 +370,7 @@ export default function Dashboard() {
     if (confirm("Are you sure you want to delete this Wi-Fi network profile?")) {
       const updated = wifiNetworks.filter(net => net.id !== id);
       setWifiNetworks(updated);
-      await handleSave(prompts, kbs, models, updated);
+      await handleSave(prompts, kbs, modelSlots, updated);
     }
   };
 
@@ -350,7 +387,7 @@ export default function Dashboard() {
     // Re-assign priorities explicitly based on new order
     const reordered = updated.map((net, i) => ({ ...net, priority: i + 1 }));
     setWifiNetworks(reordered);
-    await handleSave(prompts, kbs, models, reordered);
+    await handleSave(prompts, kbs, modelSlots, reordered);
   };
 
   // Clear Knowledge Base context
@@ -359,7 +396,7 @@ export default function Dashboard() {
       const newKbs = [...kbs];
       newKbs[kbIdx] = "";
       setKbs(newKbs);
-      await handleSave(prompts, newKbs, models, wifiNetworks);
+      await handleSave(prompts, newKbs, modelSlots, wifiNetworks);
     }
   };
 
@@ -575,57 +612,123 @@ export default function Dashboard() {
         {activeTab === 'models' && (
           <section className="space-y-6">
             <div className="bg-white border-2 border-gray-200 p-6 rounded-lg">
-              <h2 className="text-2xl font-extrabold text-gray-900">10 AI Model Slots</h2>
+              <h2 className="text-2xl font-extrabold text-gray-900">10 AI Model Slots & Dual-Model Groups</h2>
               <p className="text-xs text-gray-500 mt-1">
-                Selectable by ai_index (1 to 10) from the IoT calculator board.
+                Selectable by ai_index (1 to 10) from the IoT calculator board. Supports custom display names and parallel dual-model reasoning.
               </p>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {models.map((mText, idx) => (
-                <div
-                  key={idx}
-                  className="flat-card p-6 space-y-4 hover:scale-[1.015] transition-transform"
-                >
-                  <div className="flex justify-between items-center">
-                    <label className="text-xs font-extrabold text-blue-600 flex items-center gap-2">
-                      <span className="w-7 h-7 rounded-md bg-blue-50 flex items-center justify-center text-xs font-extrabold text-blue-600">
-                        #{idx + 1}
-                      </span>
-                      Model Slot #{idx + 1}
-                    </label>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const updated = [...models];
-                        updated[idx] = PRESET_MODELS[idx] || PRESET_MODELS[0];
-                        setModels(updated);
-                      }}
-                      className="text-[10px] text-blue-600 font-bold hover:underline transition-colors"
-                    >
-                      Reset Preset
-                    </button>
-                  </div>
+              {modelSlots.map((slot, idx) => {
+                const hasSecondary = Boolean(slot.model_secondary && slot.model_secondary.trim());
+                return (
+                  <div
+                    key={idx}
+                    className="flat-card p-6 space-y-4 hover:scale-[1.015] transition-transform"
+                  >
+                    <div className="flex justify-between items-center">
+                      <label className="text-xs font-extrabold text-blue-600 flex items-center gap-2">
+                        <span className="w-7 h-7 rounded-md bg-blue-50 flex items-center justify-center text-xs font-extrabold text-blue-600">
+                          #{idx + 1}
+                        </span>
+                        Slot #{idx + 1}: {slot.name}
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const updated = [...modelSlots];
+                          updated[idx] = { ...DEFAULT_SLOTS[idx] };
+                          setModelSlots(updated);
+                        }}
+                        className="text-[10px] text-blue-600 font-bold hover:underline transition-colors"
+                      >
+                        Reset Preset
+                      </button>
+                    </div>
 
-                  <input
-                    id={`model-input-${idx + 1}`}
-                    type="text"
-                    className="flat-input w-full px-4 py-3 text-xs font-mono font-bold text-gray-900 placeholder-gray-400"
-                    placeholder={`e.g. google/gemini-2.5-flash`}
-                    value={mText}
-                    onChange={(e) => {
-                      const updated = [...models];
-                      updated[idx] = e.target.value;
-                      setModels(updated);
-                    }}
-                  />
-                  
-                  <div className="flex justify-between items-center text-[10px] text-gray-500 font-medium">
-                    <span>Target Model string for OpenRouter</span>
-                    <span className="font-mono font-bold text-blue-600 bg-blue-50 px-2.5 py-1 rounded-md">ai_index={idx + 1}</span>
+                    {/* Custom Display Name */}
+                    <div className="space-y-1">
+                      <label className="text-[11px] font-bold text-gray-700">Display Label (E-Ink Menu Name)</label>
+                      <input
+                        type="text"
+                        className="flat-input w-full px-4 py-2 text-xs font-bold text-gray-900"
+                        placeholder={`e.g. Sol+Sonnet`}
+                        value={slot.name}
+                        onChange={(e) => {
+                          const updated = [...modelSlots];
+                          updated[idx] = { ...updated[idx], name: e.target.value };
+                          setModelSlots(updated);
+                        }}
+                      />
+                    </div>
+
+                    {/* Primary Model ID */}
+                    <div className="space-y-1">
+                      <label className="text-[11px] font-bold text-gray-700">Primary OpenRouter Model ID</label>
+                      <input
+                        type="text"
+                        className="flat-input w-full px-4 py-2.5 text-xs font-mono font-bold text-gray-900 placeholder-gray-400"
+                        placeholder={`e.g. anthropic/claude-3.5-sonnet`}
+                        value={slot.model_primary}
+                        onChange={(e) => {
+                          const updated = [...modelSlots];
+                          updated[idx] = { ...updated[idx], model_primary: e.target.value };
+                          setModelSlots(updated);
+                        }}
+                      />
+                    </div>
+
+                    {/* Dual Model Toggle & Secondary Model ID */}
+                    <div className="pt-2 border-t border-gray-100 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <label className="text-xs font-bold text-gray-800 flex items-center gap-2 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={hasSecondary}
+                            onChange={(e) => {
+                              const updated = [...modelSlots];
+                              updated[idx] = {
+                                ...updated[idx],
+                                model_secondary: e.target.checked ? (updated[idx].model_secondary || "openai/gpt-4o-mini") : ""
+                              };
+                              setModelSlots(updated);
+                            }}
+                            className="w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500"
+                          />
+                          Enable Parallel Dual Model
+                        </label>
+                        {hasSecondary && (
+                          <span className="text-[10px] font-extrabold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
+                            Dual Execution
+                          </span>
+                        )}
+                      </div>
+
+                      {hasSecondary && (
+                        <div className="space-y-1 pl-6 pt-1">
+                          <label className="text-[11px] font-bold text-emerald-700">Secondary Model ID (Executes in Parallel)</label>
+                          <input
+                            type="text"
+                            className="flat-input w-full px-4 py-2.5 text-xs font-mono font-bold text-gray-900 placeholder-gray-400 border-emerald-200 focus:border-emerald-500"
+                            placeholder={`e.g. openai/gpt-4o`}
+                            value={slot.model_secondary || ""}
+                            onChange={(e) => {
+                              const updated = [...modelSlots];
+                              updated[idx] = { ...updated[idx], model_secondary: e.target.value };
+                              setModelSlots(updated);
+                            }}
+                          />
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="flex justify-between items-center text-[10px] text-gray-500 font-medium">
+                      <span>Mapped Index for hardware payload</span>
+                      <span className="font-mono font-bold text-blue-600 bg-blue-50 px-2.5 py-1 rounded-md">ai_index={idx + 1}</span>
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </section>
         )}        {/* Tab 3: Knowledge Base Contexts (1 to 3) */}

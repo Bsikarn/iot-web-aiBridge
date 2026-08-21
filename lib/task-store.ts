@@ -1,6 +1,7 @@
 export interface TaskState {
   task_id: string;
   status: 'processing' | 'completed' | 'failed';
+  step?: string;
   createdAt: number;
   completedAt?: number;
   error?: string;

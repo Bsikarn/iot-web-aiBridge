@@ -31,6 +31,7 @@ export async function GET(req: Request) {
     if (task.status === 'processing') {
       return NextResponse.json({
         status: "processing",
+        step: task.step || "processing",
         task_id: taskId
       }, { status: 200 });
     }
@@ -38,6 +39,7 @@ export async function GET(req: Request) {
     if (task.status === 'failed') {
       return NextResponse.json({
         status: "failed",
+        step: task.step || "failed",
         task_id: taskId,
         error: task.error || "Task processing failed"
       }, { status: 200 });
@@ -45,6 +47,7 @@ export async function GET(req: Request) {
 
     return NextResponse.json({
       status: "completed",
+      step: "completed",
       task_id: taskId,
       pages: task.pages || [],
       total_pages: task.total_pages || 0,

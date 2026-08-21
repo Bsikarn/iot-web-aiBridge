@@ -2,7 +2,7 @@
  * Upload image buffer to Discord Webhook and retrieve Discord CDN attachment URL.
  */
 export async function uploadToDiscordWebhook(
-  fileBuffer: ArrayBuffer,
+  fileBuffer: ArrayBuffer | Buffer,
   fileName: string = 'snapshot.jpg',
   mimeType: string = 'image/jpeg'
 ): Promise<string> {
@@ -17,7 +17,7 @@ export async function uploadToDiscordWebhook(
     ? (webhookUrl.includes('wait=true') ? webhookUrl : `${webhookUrl}&wait=true`)
     : `${webhookUrl}?wait=true`;
 
-  const blob = new Blob([fileBuffer], { type: mimeType });
+  const blob = new Blob([new Uint8Array(fileBuffer)], { type: mimeType });
   const formData = new FormData();
   formData.append('files[0]', blob, fileName);
 
