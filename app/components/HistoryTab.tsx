@@ -3,6 +3,7 @@
 // Tab 5: Answer History Log panel.
 // Displays the last 3 AI responses with expandable detail view including the captured image.
 
+import { useState } from 'react';
 import { HistoryRecord } from '../types';
 
 interface HistoryTabProps {
@@ -12,6 +13,12 @@ interface HistoryTabProps {
 }
 
 export default function HistoryTab({ history, expandedHistory, onToggleItem }: HistoryTabProps) {
+  const [imageErrors, setImageErrors] = useState<{ [key: number]: boolean }>({});
+
+  const handleImageError = (idx: number) => {
+    setImageErrors((prev) => ({ ...prev, [idx]: true }));
+  };
+
   return (
     <section className="space-y-6">
       <div className="bg-white border-2 border-gray-200 p-6 rounded-lg">
@@ -24,7 +31,7 @@ export default function HistoryTab({ history, expandedHistory, onToggleItem }: H
       {history.length === 0 ? (
         <div className="bg-white p-12 text-center rounded-lg space-y-2">
           <svg className="w-8 h-8 text-gray-400 mx-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+            <path strokeLinecap="round" strokeLinejoin="round" d="M3 9a2 2 0 012-2h.93a2 2 0 011.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
             <path strokeLinecap="round" strokeLinejoin="round" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
           </svg>
           <p className="text-sm font-bold text-gray-900">No snapshots recorded yet</p>
@@ -67,16 +74,30 @@ export default function HistoryTab({ history, expandedHistory, onToggleItem }: H
                 <div className="p-6 pt-0 flex flex-col md:flex-row gap-6 border-t border-gray-100">
                   {record.imageUrl && (
                     <div className="flex-shrink-0 pt-4">
-                      <a href={record.imageUrl} target="_blank" rel="noopener noreferrer" className="block group relative">
-                        <img
-                          src={record.imageUrl}
-                          alt="Snap Preview"
-                          className="w-28 h-28 object-cover rounded-md border-2 border-gray-200 group-hover:scale-105 transition-transform"
-                        />
-                        <span className="absolute bottom-2 right-2 bg-gray-900/80 text-white text-[9px] px-1.5 py-0.5 rounded font-mono">
-                          Discord CDN
-                        </span>
-                      </a>
+                      {imageErrors[idx] ? (
+                        <div
+                          className="w-28 h-28 rounded-md border-2 border-dashed border-red-200 bg-red-50/50 flex flex-col items-center justify-center p-2 text-center select-none"
+                          title="Discord CDN image link has expired (404 Not Found)"
+                        >
+                          <svg className="w-6 h-6 text-red-400 mb-1" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                          </svg>
+                          <span className="text-[10px] font-bold text-red-600">Image Expired</span>
+                          <span className="text-[8px] text-red-400 font-mono mt-0.5">Discord 404</span>
+                        </div>
+                      ) : (
+                        <a href={record.imageUrl} target="_blank" rel="noopener noreferrer" className="block group relative">
+                          <img
+                            src={record.imageUrl}
+                            alt="Snap Preview"
+                            onError={() => handleImageError(idx)}
+                            className="w-28 h-28 object-cover rounded-md border-2 border-gray-200 group-hover:scale-105 transition-transform"
+                          />
+                          <span className="absolute bottom-2 right-2 bg-gray-900/80 text-white text-[9px] px-1.5 py-0.5 rounded font-mono">
+                            {record.imageUrl.startsWith('data:') ? 'Base64' : 'Discord CDN'}
+                          </span>
+                        </a>
+                      )}
                     </div>
                   )}
 
