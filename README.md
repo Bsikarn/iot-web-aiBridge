@@ -18,7 +18,7 @@ hardware coding git : https://github.com/Bsikarn/iot-board-aiBridge
 ├── /api/ask              --> AI Vision Router & LaTeX Canvas Pagination
 ├── /api/settings         --> 10 Prompts, 3 KBs, 10 Model Mappings
 ├── /api/wifi-settings    --> Bi-directional Wi-Fi Profile Sync
-└── /api/parse            --> Document (.pdf, .txt) Text Extractor
+└── /api/parse            --> Document (.txt, .md) Text Extractor
 │
 ▼
 [ Cloud Services & LLM Layer ]
@@ -89,19 +89,32 @@ aical-hq/
 │   │   │   └── route.ts          ⚠️ Document text extractor (.txt, .md)
 │   │   ├── settings/
 │   │   │   └── route.ts          ⚠️ GET/POST configuration & 10 AI models mapping
+│   │   ├── status/
+│   │   │   └── route.ts          ⚠️ Async task polling endpoint
 │   │   └── wifi-settings/
 │   │       └── route.ts          ⚠️ Bi-directional Wi-Fi profile sync
+│   ├── components/               ⚠️ Modular UI components (split from page.tsx)
+│   │   ├── HistoryTab.tsx        Answer History panel
+│   │   ├── KbUploadModal.tsx     Drag-and-drop KB upload modal
+│   │   ├── KnowledgeBaseTab.tsx  Knowledge Base management panel
+│   │   ├── ModelsTab.tsx         AI Model Slots configuration panel
+│   │   ├── PinLockOverlay.tsx    Dashboard PIN access overlay
+│   │   ├── PromptsTab.tsx        System Prompts management panel
+│   │   └── WifiTab.tsx           Wi-Fi Profiles management panel
 │   ├── favicon.ico
 │   ├── globals.css               ⚠️ Flat Design System CSS, Outfit typography & crisp borders
 │   ├── layout.tsx
-│   └── page.tsx                  ⚠️ Unified Control Center Dashboard (UI)
+│   ├── page.tsx                  ⚠️ Dashboard shell: state, data fetching, layout
+│   └── types.ts                  ⚠️ Shared TypeScript interfaces & constants
 ├── docs/
 │   └── private/                  ⚠️ Internal documentation (Thai)
 ├── lib/
 │   ├── auth.ts                   ⚠️ Authorization guard (x-board-key & same-origin check)
 │   ├── discord.ts                ⚠️ Discord Webhook image hosting & audit logger
 │   ├── edge-config.ts            ⚠️ Vercel Global/Edge Config data access layer
-│   └── pagination-engine.ts      ⚠️ 250x122px 1-bit E-Ink Canvas & Cloud HTML-to-Image engine
+│   ├── pagination-engine.ts      ⚠️ 250x122px 1-bit E-Ink Canvas & Cloud HTML-to-Image engine
+│   ├── redis.ts                  ⚠️ Upstash Redis task state management
+│   └── task-store.ts             ⚠️ In-memory task state fallback store
 ├── public/
 │   └── fonts/
 │       ├── NotoSansThai-Regular.ttf

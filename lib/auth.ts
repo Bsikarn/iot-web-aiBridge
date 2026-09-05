@@ -21,11 +21,6 @@ export function isAuthorizedBoardRequest(req: Request): boolean {
     return true;
   }
 
-  // If request contains any x-board-key and it matches secretKey, allow immediately
-  if (reqKey && reqKey === secretKey) {
-    return true;
-  }
-
   // 2. Same-Origin & Web Dashboard Browser Access
   const host = req.headers.get('host') || '';
   const referer = req.headers.get('referer') || '';

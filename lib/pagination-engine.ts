@@ -245,6 +245,31 @@ interface RenderElement {
   isBlockMath?: boolean;
 }
 
+/**
+ * Convert an RGBA PNG buffer into a 1-bit monochrome PNG (white background, black ink).
+ * Replaces transparent pixels with white, then binarizes all others at threshold 200.
+ */
+function binarizePng(inputBuffer: Buffer): Buffer {
+  const png = PNG.sync.read(inputBuffer);
+  for (let i = 0; i < png.data.length; i += 4) {
+    const alpha = png.data[i + 3];
+    if (alpha === 0) {
+      png.data[i] = 255;
+      png.data[i + 1] = 255;
+      png.data[i + 2] = 255;
+      png.data[i + 3] = 255;
+    } else {
+      const avg = (png.data[i] + png.data[i + 1] + png.data[i + 2]) / 3;
+      const val = avg <= 200 ? 0 : 255;
+      png.data[i] = val;
+      png.data[i + 1] = val;
+      png.data[i + 2] = val;
+      png.data[i + 3] = 255;
+    }
+  }
+  return PNG.sync.write(png);
+}
+
 // Wrap text string into lines that fit within maxPixelWidth (238px) using canvas font metrics
 function wrapTextToLines(ctx: any, text: string, fontStr: string, maxPixelWidth = 238): string[] {
   ctx.font = fontStr;
@@ -343,24 +368,7 @@ export async function renderEInkPages(rawText: string): Promise<RenderedPagePayl
 
     const cloudBuffer = await renderHtmlToImageBuffer(styledHtml);
     if (cloudBuffer) {
-      const png = PNG.sync.read(cloudBuffer);
-      for (let i = 0; i < png.data.length; i += 4) {
-        const alpha = png.data[i + 3];
-        if (alpha === 0) {
-          png.data[i] = 255;
-          png.data[i + 1] = 255;
-          png.data[i + 2] = 255;
-          png.data[i + 3] = 255;
-        } else {
-          const avg = (png.data[i] + png.data[i + 1] + png.data[i + 2]) / 3;
-          const val = avg <= 200 ? 0 : 255;
-          png.data[i] = val;
-          png.data[i + 1] = val;
-          png.data[i + 2] = val;
-          png.data[i + 3] = 255;
-        }
-      }
-      const binarized = PNG.sync.write(png);
+      const binarized = binarizePng(cloudBuffer);
       return {
         success: true,
         total_pages: 1,
@@ -561,27 +569,7 @@ export async function renderEInkPages(rawText: string): Promise<RenderedPagePayl
     }
 
     // Convert Canvas to PNG Buffer and apply 1-bit monochrome binarization
-    const canvasBuffer = canvas.toBuffer('image/png');
-    const png = PNG.sync.read(canvasBuffer);
-
-    for (let i = 0; i < png.data.length; i += 4) {
-      const alpha = png.data[i + 3];
-      if (alpha === 0) {
-        png.data[i] = 255;
-        png.data[i + 1] = 255;
-        png.data[i + 2] = 255;
-        png.data[i + 3] = 255;
-      } else {
-        const avg = (png.data[i] + png.data[i + 1] + png.data[i + 2]) / 3;
-        const val = avg <= 200 ? 0 : 255;
-        png.data[i] = val;
-        png.data[i + 1] = val;
-        png.data[i + 2] = val;
-        png.data[i + 3] = 255;
-      }
-    }
-
-    const binarizedBuffer = PNG.sync.write(png);
+    const binarizedBuffer = binarizePng(canvas.toBuffer('image/png'));
     pagesBase64.push(`data:image/png;base64,${binarizedBuffer.toString('base64')}`);
   }
 
@@ -605,27 +593,7 @@ function createEmptyPagePayload(message: string): RenderedPagePayload {
   ctx.font = '16px "Sarabun", "Segoe UI", Arial, sans-serif';
   ctx.fillText(message, PADDING, START_Y + 14);
 
-  const canvasBuffer = canvas.toBuffer('image/png');
-  const png = PNG.sync.read(canvasBuffer);
-
-  for (let i = 0; i < png.data.length; i += 4) {
-    const alpha = png.data[i + 3];
-    if (alpha === 0) {
-      png.data[i] = 255;
-      png.data[i + 1] = 255;
-      png.data[i + 2] = 255;
-      png.data[i + 3] = 255;
-    } else {
-      const avg = (png.data[i] + png.data[i + 1] + png.data[i + 2]) / 3;
-      const val = avg <= 200 ? 0 : 255;
-      png.data[i] = val;
-      png.data[i + 1] = val;
-      png.data[i + 2] = val;
-      png.data[i + 3] = 255;
-    }
-  }
-
-  const binarizedBuffer = PNG.sync.write(png);
+  const binarizedBuffer = binarizePng(canvas.toBuffer('image/png'));
   return {
     success: true,
     total_pages: 1,
