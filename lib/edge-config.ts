@@ -7,7 +7,7 @@ export interface HistoryRecord {
   promptIndex: number;
   kbIndex: number;
   aiResponse: string;
-  imageUrl: string;
+  imageUrl?: string;
 }
 
 export interface WiFiNetwork {

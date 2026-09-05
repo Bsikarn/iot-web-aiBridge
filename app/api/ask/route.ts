@@ -144,7 +144,7 @@ export async function POST(req: Request) {
             await setTaskState(taskId, { status: "failed", step: "failed", error: "No historical record available to reuse" }, 900);
             return;
           }
-          stitchedImageUrl = history[0].imageUrl;
+          stitchedImageUrl = history[0].imageUrl || "";
         } else if (rawImageFiles.length > 0) {
           // Load each image into Canvas Image
           const loadedImages = await Promise.all(
