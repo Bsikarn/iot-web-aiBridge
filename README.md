@@ -1,4 +1,4 @@
-# 🧠 Embedded AI Hardware for Visual Problem Solving
+# 🧠 AI Bridge — Embedded AI Hardware for Visual Problem Solving
 
 An end-to-end, low-power Embedded IoT system and Serverless Web Platform designed for visual question answering and mathematical problem solving. A personal project for Sikarn Pattarasirimongkol, a Full-stack Developer focusing on IoT, Software Engineering, and AI integration. The system integrates a portable **Raspberry Pi Zero** hardware unit equipped with a camera and a **2.13" E-Paper Display (EPD)**, communicating with a **Next.js Serverless API** backend powered by **OpenRouter LLMs** with **Prompt Caching** and a **1-bit Canvas Pagination Engine**.
 hardware coding git : https://github.com/Bsikarn/iot-board-aiBridge
@@ -80,7 +80,7 @@ hardware coding git : https://github.com/Bsikarn/iot-board-aiBridge
 ## Directory Structure
 
 ```text
-aical-hq/
+ai-bridge/
 ├── app/
 │   ├── api/
 │   │   ├── ask/

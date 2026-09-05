@@ -1,0 +1,992 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AI Bridge (HQ) - High-Level Runtime Architecture</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-primary: #090d16;
+      --bg-secondary: #111726;
+      --bg-card: rgba(17, 24, 39, 0.85);
+      --bg-node: #161f33;
+      --border-color: rgba(255, 255, 255, 0.1);
+      --text-main: #f1f5f9;
+      --text-muted: #94a3b8;
+      --accent-cyan: #06b6d4;
+      --accent-emerald: #10b981;
+      --accent-violet: #8b5cf6;
+      --accent-rose: #f43f5e;
+      --accent-amber: #f59e0b;
+      --accent-blue: #3b82f6;
+      --grid-line: rgba(255, 255, 255, 0.03);
+    }
+
+    [data-theme="light"] {
+      --bg-primary: #f8fafc;
+      --bg-secondary: #ffffff;
+      --bg-card: rgba(255, 255, 255, 0.9);
+      --bg-node: #ffffff;
+      --border-color: rgba(0, 0, 0, 0.12);
+      --text-main: #0f172a;
+      --text-muted: #64748b;
+      --accent-cyan: #0891b2;
+      --accent-emerald: #059669;
+      --accent-violet: #7c3aed;
+      --accent-rose: #e11d48;
+      --accent-amber: #d97706;
+      --accent-blue: #2563eb;
+      --grid-line: rgba(0, 0, 0, 0.04);
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      background-color: var(--bg-primary);
+      color: var(--text-main);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow-x: hidden;
+      transition: background-color 0.3s ease, color 0.3s ease;
+    }
+
+    .font-mono {
+      font-family: 'Fira Code', monospace;
+    }
+
+    /* Grid background effect */
+    .bg-grid-pattern {
+      background-image: linear-gradient(to right, var(--grid-line) 1px, transparent 1px),
+                        linear-gradient(to bottom, var(--grid-line) 1px, transparent 1px);
+      background-size: 32px 32px;
+    }
+
+    /* Layout Header */
+    header {
+      padding: 1.25rem 2rem;
+      background: var(--bg-secondary);
+      border-bottom: 1px solid var(--border-color);
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+      z-index: 10;
+    }
+
+    .header-title-group {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+
+    .pulse-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background-color: var(--accent-emerald);
+      box-shadow: 0 0 12px var(--accent-emerald);
+      animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.4; transform: scale(1.2); }
+    }
+
+    h1.archify-title {
+      font-size: 1.25rem;
+      font-weight: 800;
+      letter-spacing: -0.025em;
+      color: var(--text-main);
+    }
+
+    /* Toolbar Controls */
+    .controls-group {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      flex-wrap: wrap;
+    }
+
+    .btn {
+      background: var(--bg-primary);
+      color: var(--text-main);
+      border: 1px solid var(--border-color);
+      padding: 0.4rem 0.8rem;
+      border-radius: 6px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      transition: all 0.2s ease;
+    }
+
+    .btn:hover {
+      border-color: var(--accent-blue);
+      color: var(--accent-blue);
+      transform: translateY(-1px);
+    }
+
+    .btn.active {
+      background: var(--accent-blue);
+      color: #ffffff;
+      border-color: var(--accent-blue);
+    }
+
+    /* Guided View Scenario Controls */
+    .scenario-bar {
+      background: var(--bg-secondary);
+      border-bottom: 1px solid var(--border-color);
+      padding: 0.6rem 2rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+      font-size: 0.8rem;
+    }
+
+    .scenario-selector {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .scenario-step-desc {
+      color: var(--accent-cyan);
+      font-weight: 600;
+      font-family: 'Fira Code', monospace;
+      font-size: 0.75rem;
+    }
+
+    /* Main Diagram Canvas Container */
+    .canvas-container {
+      flex: 1;
+      position: relative;
+      overflow: auto;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      padding: 2rem;
+    }
+
+    svg.archify-svg {
+      width: 100%;
+      max-width: 1420px;
+      height: 860px;
+      user-select: none;
+    }
+
+    /* Trust Boundary Regions */
+    .trust-boundary {
+      fill: var(--bg-secondary);
+      fill-opacity: 0.4;
+      stroke-width: 1.5px;
+      stroke-dasharray: 6 6;
+      rx: 16px;
+      ry: 16px;
+      transition: all 0.3s ease;
+    }
+
+    .boundary-title-text {
+      font-size: 11px;
+      font-weight: 800;
+      font-family: 'Fira Code', monospace;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    /* SVG Nodes Styling */
+    g.archify-node {
+      cursor: pointer;
+      transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    g.archify-node:hover {
+      transform: translateY(-4px);
+    }
+
+    .node-rect {
+      fill: var(--bg-node);
+      stroke: var(--border-color);
+      stroke-width: 1.5px;
+      rx: 10px;
+      ry: 10px;
+      filter: drop-shadow(0 4px 12px rgba(0, 0, 0, 0.15));
+      transition: all 0.25s ease;
+    }
+
+    g.archify-node:hover .node-rect {
+      stroke-width: 2px;
+      filter: drop-shadow(0 8px 20px rgba(59, 130, 246, 0.25));
+    }
+
+    /* Kind Specific Node Colors */
+    g[data-node-kind="frontend"] .node-rect { stroke: var(--accent-cyan); }
+    g[data-node-kind="security"] .node-rect { stroke: var(--accent-rose); }
+    g[data-node-kind="backend"] .node-rect { stroke: var(--accent-blue); }
+    g[data-node-kind="database"] .node-rect { stroke: var(--accent-emerald); }
+    g[data-node-kind="cloud"] .node-rect { stroke: var(--accent-violet); }
+    g[data-node-kind="external"] .node-rect { stroke: var(--accent-amber); }
+
+    .node-title {
+      font-size: 12px;
+      font-weight: 700;
+      fill: var(--text-main);
+      font-family: 'Plus Jakarta Sans', sans-serif;
+    }
+
+    .node-subtitle {
+      font-size: 10px;
+      fill: var(--text-muted);
+      font-family: 'Fira Code', monospace;
+    }
+
+    /* Connection Lines and Labels */
+    .connection-line {
+      fill: none;
+      stroke: var(--text-muted);
+      stroke-width: 1.75px;
+      stroke-opacity: 0.45;
+      transition: all 0.3s ease;
+    }
+
+    .connection-line.highlighted {
+      stroke: var(--accent-cyan) !important;
+      stroke-width: 3px !important;
+      stroke-opacity: 1 !important;
+      animation: dashFlow 1.5s linear infinite;
+      stroke-dasharray: 8 6;
+    }
+
+    @keyframes dashFlow {
+      to { stroke-dashoffset: -28; }
+    }
+
+    /* Connection Mask Plate behind label */
+    .c-mask {
+      fill: var(--bg-primary);
+      rx: 4px;
+      ry: 4px;
+      stroke: var(--border-color);
+      stroke-width: 0.75px;
+    }
+
+    .connection-text {
+      font-size: 9.5px;
+      font-family: 'Fira Code', monospace;
+      font-weight: 600;
+      fill: var(--text-muted);
+      text-anchor: middle;
+      dominant-baseline: middle;
+    }
+
+    /* Bottom Info Cards Section */
+    .cards {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 1.25rem;
+      padding: 1.5rem 2rem 2.5rem 2rem;
+      background: var(--bg-secondary);
+      border-top: 1px solid var(--border-color);
+    }
+
+    .info-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: 12px;
+      padding: 1.25rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+      transition: transform 0.2s ease, border-color 0.2s ease;
+    }
+
+    .info-card:hover {
+      transform: translateY(-2px);
+      border-color: var(--accent-blue);
+    }
+
+    .card-header {
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+    }
+
+    .dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+
+    .dot.cyan { background-color: var(--accent-cyan); box-shadow: 0 0 8px var(--accent-cyan); }
+    .dot.emerald { background-color: var(--accent-emerald); box-shadow: 0 0 8px var(--accent-emerald); }
+    .dot.violet { background-color: var(--accent-violet); box-shadow: 0 0 8px var(--accent-violet); }
+    .dot.rose { background-color: var(--accent-rose); box-shadow: 0 0 8px var(--accent-rose); }
+
+    .card-title {
+      font-size: 0.85rem;
+      font-weight: 700;
+      color: var(--text-main);
+    }
+
+    .card-desc {
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      line-height: 1.5;
+    }
+
+    /* Node Inspector Modal Panel */
+    .inspector-panel {
+      position: fixed;
+      bottom: 2rem;
+      right: 2rem;
+      width: 360px;
+      background: var(--bg-secondary);
+      border: 1px solid var(--accent-blue);
+      border-radius: 12px;
+      padding: 1.25rem;
+      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
+      z-index: 100;
+      display: none;
+      animation: slideUp 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    @keyframes slideUp {
+      from { opacity: 0; transform: translateY(20px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .inspector-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 0.75rem;
+      padding-bottom: 0.5rem;
+      border-bottom: 1px solid var(--border-color);
+    }
+
+    .inspector-title {
+      font-size: 0.9rem;
+      font-weight: 800;
+      color: var(--accent-cyan);
+      font-family: 'Fira Code', monospace;
+    }
+
+    .inspector-close {
+      cursor: pointer;
+      color: var(--text-muted);
+      font-size: 1rem;
+      font-weight: bold;
+    }
+  </style>
+</head>
+<body class="bg-grid-pattern">
+
+  <!-- Header -->
+  <header>
+    <div class="header-title-group">
+      <div class="pulse-dot"></div>
+      <h1 class="archify-title">AI Bridge (HQ) - High-Level Runtime Architecture</h1>
+    </div>
+
+    <!-- Toolbar Controls -->
+    <div class="controls-group">
+      <button class="btn" id="btn-theme" title="Toggle Theme">
+        <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"/></svg>
+        Theme
+      </button>
+
+      <div style="width: 1px; height: 16px; background: var(--border-color); margin: 0 4px;"></div>
+
+      <button class="btn active" data-preset="default">Default</button>
+      <button class="btn" data-preset="minimal">Minimal</button>
+      <button class="btn" data-preset="contrast">High Contrast</button>
+
+      <div style="width: 1px; height: 16px; background: var(--border-color); margin: 0 4px;"></div>
+
+      <button class="btn" id="btn-reset">Reset View</button>
+      <button class="btn" id="btn-export">Export SVG</button>
+    </div>
+  </header>
+
+  <!-- Guided Scenario Player Bar -->
+  <div class="scenario-bar">
+    <div class="scenario-selector">
+      <span style="font-weight: 700; color: var(--text-muted); text-transform: uppercase; font-size: 0.7rem; letter-spacing: 0.05em;">Guided Flow:</span>
+      <select id="select-scenario" style="background: var(--bg-primary); color: var(--text-main); border: 1px solid var(--border-color); padding: 0.3rem 0.6rem; border-radius: 6px; font-size: 0.75rem; font-family: 'Fira Code', monospace; outline: none;">
+        <option value="scenario-1">1. Hardware Snap & AI Solve Loop</option>
+        <option value="scenario-2">2. Admin Settings & Slot Sync</option>
+        <option value="scenario-3">3. Knowledge Base Ingestion</option>
+      </select>
+      <button class="btn" id="btn-step-prev">◀ Prev</button>
+      <button class="btn" id="btn-step-next">Next ▶</button>
+    </div>
+
+    <div id="step-description" class="scenario-step-desc">
+      Step 1/5: ESP32-CAM captures JPEG snapshot and sends HTTPS payload to POST /api/ask
+    </div>
+  </div>
+
+  <!-- Interactive SVG Canvas Container -->
+  <div class="canvas-container">
+    <svg class="archify-svg" viewBox="0 0 1420 860" id="main-svg">
+      
+      <!-- Definitions & Markers -->
+      <defs>
+        <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+          <path d="M 0 0 L 10 5 L 0 10 z" fill="#94a3b8" />
+        </marker>
+        <marker id="arrow-active" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M 0 0 L 10 5 L 0 10 z" fill="#06b6d4" />
+        </marker>
+      </defs>
+
+      <!-- TRUST BOUNDARIES (REGIONS) -->
+      <!-- Region 1: Client & Hardware -->
+      <g class="region-group">
+        <rect x="40" y="40" width="290" height="780" class="trust-boundary" style="stroke: #06b6d4;" />
+        <text x="60" y="70" class="boundary-title-text" fill="#06b6d4">🔒 BOUNDARY A: CLIENT & HARDWARE LAYER</text>
+      </g>
+
+      <!-- Region 2: API Gateway & Edge Routing -->
+      <g class="region-group">
+        <rect x="380" y="40" width="290" height="780" class="trust-boundary" style="stroke: #3b82f6;" />
+        <text x="400" y="70" class="boundary-title-text" fill="#3b82f6">🔒 BOUNDARY B: NEXT.JS APP ROUTER GATEWAY</text>
+      </g>
+
+      <!-- Region 3: Core Processing Engines -->
+      <g class="region-group">
+        <rect x="730" y="40" width="290" height="780" class="trust-boundary" style="stroke: #8b5cf6;" />
+        <text x="750" y="70" class="boundary-title-text" fill="#8b5cf6">🔒 BOUNDARY C: PROCESSING & LAYOUT ENGINES</text>
+      </g>
+
+      <!-- Region 4: Data & External Cloud -->
+      <g class="region-group">
+        <rect x="1080" y="40" width="300" height="780" class="trust-boundary" style="stroke: #10b981;" />
+        <text x="1100" y="70" class="boundary-title-text" fill="#10b981">🔒 BOUNDARY D: CLOUD & STORAGE BACKEND</text>
+      </g>
+
+      <!-- CONNECTION EDGES WITH MASK PLATES -->
+      
+      <!-- Flow 1: ESP32 to /api/ask -->
+      <g class="edge-group" id="edge-esp32-ask">
+        <path d="M 280 140 L 400 140" class="connection-line" marker-end="url(#arrow)" />
+        <rect x="300" y="128" width="80" height="22" class="c-mask" />
+        <text x="340" y="140" class="connection-text">HTTPS POST</text>
+      </g>
+
+      <!-- Flow 2: E-Ink to /api/status Polling -->
+      <g class="edge-group" id="edge-status-eink">
+        <path d="M 400 310 L 280 310" class="connection-line" marker-end="url(#arrow)" />
+        <rect x="300" y="298" width="80" height="22" class="c-mask" />
+        <text x="340" y="310" class="connection-text">GET Poll 3s</text>
+      </g>
+
+      <!-- Flow 3: WebHQ through PinGuard to /api/settings -->
+      <g class="edge-group" id="edge-web-pin">
+        <path d="M 175 520 L 175 620" class="connection-line" marker-end="url(#arrow)" />
+        <rect x="135" y="560" width="80" height="22" class="c-mask" />
+        <text x="175" y="572" class="connection-text">PIN Auth</text>
+      </g>
+
+      <g class="edge-group" id="edge-pin-settings">
+        <path d="M 280 660 L 400 480" class="connection-line" marker-end="url(#arrow)" />
+        <rect x="300" y="555" width="85" height="22" class="c-mask" />
+        <text x="342" y="567" class="connection-text">Save Config</text>
+      </g>
+
+      <!-- Flow 4: WebHQ to /api/parse -->
+      <g class="edge-group" id="edge-web-parse">
+        <path d="M 280 500 L 400 660" class="connection-line" marker-end="url(#arrow)" />
+        <rect x="300" y="570" width="85" height="22" class="c-mask" />
+        <text x="342" y="582" class="connection-text">Parse File</text>
+      </g>
+
+      <!-- Flow 5: /api/ask to Canvas Engine -->
+      <g class="edge-group" id="edge-ask-canvas">
+        <path d="M 630 140 L 750 140" class="connection-line" marker-end="url(#arrow)" />
+        <rect x="650" y="128" width="80" height="22" class="c-mask" />
+        <text x="690" y="140" class="connection-text">Grid Stitch</text>
+      </g>
+
+      <!-- Flow 6: Canvas Engine to Discord CDN -->
+      <g class="edge-group" id="edge-canvas-discord">
+        <path d="M 980 140 L 1100 650" class="connection-line" marker-end="url(#arrow)" />
+        <rect x="1010" y="380" width="75" height="22" class="c-mask" />
+        <text x="1047" y="392" class="connection-text">CDN Upload</text>
+      </g>
+
+      <!-- Flow 7: /api/ask to OpenRouter API -->
+      <g class="edge-group" id="edge-ask-openrouter">
+        <path d="M 630 160 L 1100 470" class="connection-line" marker-end="url(#arrow)" />
+        <rect x="830" y="305" width="90" height="22" class="c-mask" />
+        <text x="875" y="317" class="connection-text">Vision Prompt</text>
+      </g>
+
+      <!-- Flow 8: OpenRouter to E-Ink Pagination Engine -->
+      <g class="edge-group" id="edge-openrouter-pagination">
+        <path d="M 1100 490 L 980 320" class="connection-line" marker-end="url(#arrow)" />
+        <rect x="1010" y="395" width="80" height="22" class="c-mask" />
+        <text x="1050" y="407" class="connection-text">AI Text Result</text>
+      </g>
+
+      <!-- Flow 9: Pagination Engine to Redis Storage -->
+      <g class="edge-group" id="edge-pagination-redis">
+        <path d="M 980 290 L 1100 290" class="connection-line" marker-end="url(#arrow)" />
+        <rect x="1005" y="278" width="85" height="22" class="c-mask" />
+        <text x="1047" y="290" class="connection-text">Save Task UUID</text>
+      </g>
+
+      <!-- Flow 10: /api/status to Redis Query -->
+      <g class="edge-group" id="edge-status-redis">
+        <path d="M 630 310 L 1100 310" class="connection-line" marker-end="url(#arrow)" />
+        <rect x="835" y="298" width="85" height="22" class="c-mask" />
+        <text x="877" y="310" class="connection-text">Poll Task State</text>
+      </g>
+
+      <!-- Flow 11: /api/settings to Redis -->
+      <g class="edge-group" id="edge-settings-redis">
+        <path d="M 630 480 L 1100 330" class="connection-line" marker-end="url(#arrow)" />
+        <rect x="835" y="395" width="85" height="22" class="c-mask" />
+        <text x="877" y="407" class="connection-text">Sync Config</text>
+      </g>
+
+      <!-- COMPONENT NODES -->
+      
+      <!-- Node 1: ESP32-CAM -->
+      <g class="archify-node" id="node-esp32" data-node-kind="frontend" transform="translate(70, 95)"
+         data-node-label="ESP32-CAM Board" data-node-sublabel="Hardware Client (OV2640)"
+         data-node-context="Hardware controller capturing 1-12 JPEG images, formatting multipart HTTP requests, and rendering E-Ink status.">
+        <rect class="node-rect" width="210" height="90" />
+        <text x="20" y="35" class="node-title">📷 ESP32-CAM Board</text>
+        <text x="20" y="55" class="node-subtitle">Hardware Client (OV2640)</text>
+        <text x="20" y="72" class="node-subtitle" fill="#06b6d4">Kind: Hardware Client</text>
+      </g>
+
+      <!-- Node 2: E-Ink Display Module -->
+      <g class="archify-node" id="node-eink" data-node-kind="frontend" transform="translate(70, 265)"
+         data-node-label="E-Ink Display Module" data-node-sublabel="Hardware Output Canvas"
+         data-node-context="Renders formatted math expressions and paginated AI responses onto low-power display.">
+        <rect class="node-rect" width="210" height="90" />
+        <text x="20" y="35" class="node-title">📺 E-Ink Display Module</text>
+        <text x="20" y="55" class="node-subtitle">Hardware Output Canvas</text>
+        <text x="20" y="72" class="node-subtitle" fill="#06b6d4">Kind: Hardware Display</text>
+      </g>
+
+      <!-- Node 3: Web HQ Dashboard -->
+      <g class="archify-node" id="node-webui" data-node-kind="frontend" transform="translate(70, 435)"
+         data-node-label="Web HQ Dashboard" data-node-sublabel="React 19 / Next.js Admin"
+         data-node-context="Administrative web panel for configuring 10 Prompts, 10 Model Slots, 3 KB Slots, and Wi-Fi networks.">
+        <rect class="node-rect" width="210" height="90" />
+        <text x="20" y="35" class="node-title">💻 Web HQ Dashboard</text>
+        <text x="20" y="55" class="node-subtitle">React 19 / Next.js Admin</text>
+        <text x="20" y="72" class="node-subtitle" fill="#06b6d4">Kind: Admin Web UI</text>
+      </g>
+
+      <!-- Node 4: PinLock Overlay Guard -->
+      <g class="archify-node" id="node-pinguard" data-node-kind="security" transform="translate(70, 615)"
+         data-node-label="PinLock Guard" data-node-sublabel="Client Auth Gate"
+         data-node-context="Security PIN overlay ensuring authorized access to HQ controls and secret key headers.">
+        <rect class="node-rect" width="210" height="90" />
+        <text x="20" y="35" class="node-title">🔐 PinLock Guard</text>
+        <text x="20" y="55" class="node-subtitle">Client Security Gate</text>
+        <text x="20" y="72" class="node-subtitle" fill="#f43f5e">Kind: Security Auth</text>
+      </g>
+
+      <!-- Node 5: POST /api/ask -->
+      <g class="archify-node" id="node-api-ask" data-node-kind="backend" transform="translate(420, 95)"
+         data-node-label="POST /api/ask" data-node-sublabel="Core Task Orchestrator"
+         data-node-context="Accepts multipart image payloads, issues task UUID, triggers async stitching & AI processing.">
+        <rect class="node-rect" width="210" height="90" />
+        <text x="20" y="35" class="node-title">🚀 POST /api/ask</text>
+        <text x="20" y="55" class="node-subtitle">Core Task Orchestrator</text>
+        <text x="20" y="72" class="node-subtitle" fill="#3b82f6">Kind: API Endpoint</text>
+      </g>
+
+      <!-- Node 6: GET /api/status -->
+      <g class="archify-node" id="node-api-status" data-node-kind="backend" transform="translate(420, 265)"
+         data-node-label="GET /api/status" data-node-sublabel="Async Polling Gateway"
+         data-node-context="Queried by hardware every 3s to fetch real-time task progress and paginated answer payload.">
+        <rect class="node-rect" width="210" height="90" />
+        <text x="20" y="35" class="node-title">📊 GET /api/status</text>
+        <text x="20" y="55" class="node-subtitle">Async Polling Gateway</text>
+        <text x="20" y="72" class="node-subtitle" fill="#3b82f6">Kind: API Endpoint</text>
+      </g>
+
+      <!-- Node 7: GET/POST /api/settings -->
+      <g class="archify-node" id="node-api-settings" data-node-kind="backend" transform="translate(420, 435)"
+         data-node-label="/api/settings" data-node-sublabel="Config CRUD Router"
+         data-node-context="Manages persistent CRUD operations for Prompts, Model Slots, and Knowledge Base references.">
+        <rect class="node-rect" width="210" height="90" />
+        <text x="20" y="35" class="node-title">⚙️ /api/settings</text>
+        <text x="20" y="55" class="node-subtitle">Config CRUD Router</text>
+        <text x="20" y="72" class="node-subtitle" fill="#3b82f6">Kind: API Endpoint</text>
+      </g>
+
+      <!-- Node 8: POST /api/parse -->
+      <g class="archify-node" id="node-api-parse" data-node-kind="backend" transform="translate(420, 615)"
+         data-node-label="POST /api/parse" data-node-sublabel="Document Text Extractor"
+         data-node-context="Parses uploaded text files (.txt, .md) and converts them into aggregated knowledge context.">
+        <rect class="node-rect" width="210" height="90" />
+        <text x="20" y="35" class="node-title">📄 POST /api/parse</text>
+        <text x="20" y="55" class="node-subtitle">Document Text Extractor</text>
+        <text x="20" y="72" class="node-subtitle" fill="#3b82f6">Kind: API Endpoint</text>
+      </g>
+
+      <!-- Node 9: Node Canvas Engine -->
+      <g class="archify-node" id="node-canvas" data-node-kind="backend" transform="translate(770, 95)"
+         data-node-label="Node Canvas Engine" data-node-sublabel="3-Column Grid Stitcher"
+         data-node-context="Stitches 1-12 incoming camera snapshots into a unified 3-column grid buffer at 100% native resolution.">
+        <rect class="node-rect" width="210" height="90" />
+        <text x="20" y="35" class="node-title">🖼️ Node Canvas Engine</text>
+        <text x="20" y="55" class="node-subtitle">3-Column Grid Stitcher</text>
+        <text x="20" y="72" class="node-subtitle" fill="#8b5cf6">Kind: Image Processor</text>
+      </g>
+
+      <!-- Node 10: E-Ink Pagination Engine -->
+      <g class="archify-node" id="node-pagination" data-node-kind="backend" transform="translate(770, 265)"
+         data-node-label="E-Ink Pagination Engine" data-node-sublabel="LaTeX Math Layout Engine"
+         data-node-context="Splits Markdown and LaTeX expressions into exact pixel height pages optimized for E-Ink hardware screens.">
+        <rect class="node-rect" width="210" height="90" />
+        <text x="20" y="35" class="node-title">📐 Pagination Engine</text>
+        <text x="20" y="55" class="node-subtitle">LaTeX Math Layout Engine</text>
+        <text x="20" y="72" class="node-subtitle" fill="#8b5cf6">Kind: Layout Calculator</text>
+      </g>
+
+      <!-- Node 11: Upstash Redis & Edge Config -->
+      <g class="archify-node" id="node-redis" data-node-kind="database" transform="translate(1120, 245)"
+         data-node-label="Upstash Redis & Edge" data-node-sublabel="Task State & Config Store"
+         data-node-context="Low-latency key-value store holding active task status (TTL 15 min), prompt presets, and model mappings.">
+        <rect class="node-rect" width="230" height="95" />
+        <text x="20" y="35" class="node-title">⚡ Upstash Redis & Edge</text>
+        <text x="20" y="55" class="node-subtitle">Task State & Config Store</text>
+        <text x="20" y="75" class="node-subtitle" fill="#10b981">Kind: Database & Cache</text>
+      </g>
+
+      <!-- Node 12: OpenRouter Vision Gateway -->
+      <g class="archify-node" id="node-openrouter" data-node-kind="cloud" transform="translate(1120, 425)"
+         data-node-label="OpenRouter Vision API" data-node-sublabel="Gemini 2.5/3.7, GPT-4o, Claude"
+         data-node-context="Multi-provider AI vision gateway processing multimodal image context + system prompts + knowledge base.">
+        <rect class="node-rect" width="230" height="95" />
+        <text x="20" y="35" class="node-title">🧠 OpenRouter Vision API</text>
+        <text x="20" y="55" class="node-subtitle">Gemini 2.5/3.7, GPT-4o, Claude</text>
+        <text x="20" y="75" class="node-subtitle" fill="#8b5cf6">Kind: Cloud AI Service</text>
+      </g>
+
+      <!-- Node 13: Discord Webhook CDN -->
+      <g class="archify-node" id="node-discord" data-node-kind="external" transform="translate(1120, 605)"
+         data-node-label="Discord Webhook CDN" data-node-sublabel="Grid Image Host"
+         data-node-context="Hosts stitched grid images to provide high-speed public CDN URLs for multimodal AI ingestion.">
+        <rect class="node-rect" width="230" height="95" />
+        <text x="20" y="35" class="node-title">💬 Discord Webhook CDN</text>
+        <text x="20" y="55" class="node-subtitle">Grid Attachment Storage</text>
+        <text x="20" y="75" class="node-subtitle" fill="#f59e0b">Kind: External CDN Storage</text>
+      </g>
+
+    </svg>
+  </div>
+
+  <!-- Component Inspector Floating Panel -->
+  <div class="inspector-panel" id="inspector-panel">
+    <div class="inspector-header">
+      <span class="inspector-title" id="insp-title">Component Inspector</span>
+      <span class="inspector-close" id="insp-close">✕</span>
+    </div>
+    <div style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 0.5rem;" id="insp-sub">Sublabel</div>
+    <div style="font-size: 0.8rem; color: var(--text-main); line-height: 1.5;" id="insp-desc">Description text...</div>
+  </div>
+
+  <!-- Bottom Thematic Summary Cards (4 Required Cards) -->
+  <div class="cards">
+    
+    <!-- Card 1: Frontend & Edge Hosting (Cyan) -->
+    <div class="info-card">
+      <div class="card-header">
+        <div class="dot cyan"></div>
+        <div class="card-title">1. Frontend & Hardware Client</div>
+      </div>
+      <div class="card-desc">
+        Integrates ESP32-CAM hardware with OV2640 optics and custom E-Ink rendering along with a Next.js React 19 administrative control center.
+      </div>
+    </div>
+
+    <!-- Card 2: Data, State & Realtime (Emerald) -->
+    <div class="info-card">
+      <div class="card-header">
+        <div class="dot emerald"></div>
+        <div class="card-title">2. Data, State & Realtime Cache</div>
+      </div>
+      <div class="card-desc">
+        Powered by Upstash Redis and Vercel Edge Config for sub-10ms task polling (`/api/status`), prompt presets, and model slot mapping persistence.
+      </div>
+    </div>
+
+    <!-- Card 3: Core Business / AI / Worker Pipelines (Violet) -->
+    <div class="info-card">
+      <div class="card-header">
+        <div class="dot violet"></div>
+        <div class="card-title">3. AI Vision & Layout Pipelines</div>
+      </div>
+      <div class="card-desc">
+        Combines Node Canvas grid stitching, OpenRouter vision LLMs (Gemini/GPT-4o/Claude), and E-Ink LaTeX math pagination engines.
+      </div>
+    </div>
+
+    <!-- Card 4: Security, Auth & Trust Boundaries (Rose) -->
+    <div class="info-card">
+      <div class="card-header">
+        <div class="dot rose"></div>
+        <div class="card-title">4. Security & Trust Boundaries</div>
+      </div>
+      <div class="card-desc">
+        Enforces strict trust boundaries using `x-board-key` header verification for hardware endpoints and PIN overlay client protection for HQ admin controls.
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Embedded Archify Guided Views Scenarios JSON -->
+  <script type="application/json" id="archify-guided-views-data">
+  {
+    "scenarios": [
+      {
+        "id": "scenario-1",
+        "title": "Hardware Snap & AI Solve Loop",
+        "steps": [
+          {
+            "step": 1,
+            "desc": "Step 1/5: ESP32-CAM captures JPEG snapshot and sends HTTPS payload to POST /api/ask",
+            "nodes": ["node-esp32", "node-api-ask"],
+            "edges": ["edge-esp32-ask"]
+          },
+          {
+            "step": 2,
+            "desc": "Step 2/5: /api/ask passes images to Node Canvas Engine to stitch 3-column grid",
+            "nodes": ["node-api-ask", "node-canvas", "node-discord"],
+            "edges": ["edge-ask-canvas", "edge-canvas-discord"]
+          },
+          {
+            "step": 3,
+            "desc": "Step 3/5: Combined grid + system prompt dispatched to OpenRouter Vision API",
+            "nodes": ["node-api-ask", "node-openrouter"],
+            "edges": ["edge-ask-openrouter"]
+          },
+          {
+            "step": 4,
+            "desc": "Step 4/5: AI answer text formatted & paginated for E-Ink, saved to Upstash Redis",
+            "nodes": ["node-openrouter", "node-pagination", "node-redis"],
+            "edges": ["edge-openrouter-pagination", "edge-pagination-redis"]
+          },
+          {
+            "step": 5,
+            "desc": "Step 5/5: ESP32-CAM polls GET /api/status every 3s and renders pages on E-Ink Display",
+            "nodes": ["node-api-status", "node-redis", "node-eink"],
+            "edges": ["edge-status-redis", "edge-status-eink"]
+          }
+        ]
+      },
+      {
+        "id": "scenario-2",
+        "title": "Admin Settings & Slot Sync",
+        "steps": [
+          {
+            "step": 1,
+            "desc": "Step 1/2: Admin unlocks Web HQ via PinLock Guard and edits Prompts / Models",
+            "nodes": ["node-webui", "node-pinguard"],
+            "edges": ["edge-web-pin"]
+          },
+          {
+            "step": 2,
+            "desc": "Step 2/2: /api/settings syncs active configurations to Upstash Redis & Edge Config",
+            "nodes": ["node-pinguard", "node-api-settings", "node-redis"],
+            "edges": ["edge-pin-settings", "edge-settings-redis"]
+          }
+        ]
+      },
+      {
+        "id": "scenario-3",
+        "title": "Knowledge Base Ingestion",
+        "steps": [
+          {
+            "step": 1,
+            "desc": "Step 1/2: User uploads text/markdown document to Knowledge Base Tab",
+            "nodes": ["node-webui", "node-api-parse"],
+            "edges": ["edge-web-parse"]
+          },
+          {
+            "step": 2,
+            "desc": "Step 2/2: Text extracted and attached into active KB Slot in Upstash Redis",
+            "nodes": ["node-api-parse", "node-api-settings", "node-redis"],
+            "edges": ["edge-settings-redis"]
+          }
+        ]
+      }
+    ]
+  }
+  </script>
+
+  <!-- Interactive Archify Runtime JS -->
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      // 1. Theme Toggle
+      const themeBtn = document.getElementById('btn-theme');
+      themeBtn.addEventListener('click', () => {
+        const currentTheme = document.documentElement.getAttribute('data-theme');
+        const newTheme = currentTheme === 'light' ? 'dark' : 'light';
+        document.documentElement.setAttribute('data-theme', newTheme);
+      });
+
+      // 2. Preset Switching
+      const presetBtns = document.querySelectorAll('[data-preset]');
+      presetBtns.forEach(btn => {
+        btn.addEventListener('click', () => {
+          presetBtns.forEach(b => b.classList.remove('active'));
+          btn.classList.add('active');
+          const preset = btn.getAttribute('data-preset');
+          applyPreset(preset);
+        });
+      });
+
+      function applyPreset(preset) {
+        const lines = document.querySelectorAll('.connection-line');
+        const nodes = document.querySelectorAll('.node-rect');
+        if (preset === 'minimal') {
+          lines.forEach(l => l.style.strokeOpacity = '0.2');
+          nodes.forEach(n => n.style.strokeWidth = '1px');
+        } else if (preset === 'contrast') {
+          lines.forEach(l => l.style.strokeOpacity = '0.9');
+          nodes.forEach(n => n.style.strokeWidth = '2.5px');
+        } else {
+          lines.forEach(l => l.style.strokeOpacity = '0.45');
+          nodes.forEach(n => n.style.strokeWidth = '1.5px');
+        }
+      }
+
+      // 3. Component Inspector Panel
+      const inspector = document.getElementById('inspector-panel');
+      const inspTitle = document.getElementById('insp-title');
+      const inspSub = document.getElementById('insp-sub');
+      const inspDesc = document.getElementById('insp-desc');
+      const inspClose = document.getElementById('insp-close');
+
+      document.querySelectorAll('.archify-node').forEach(node => {
+        node.addEventListener('click', () => {
+          const label = node.getAttribute('data-node-label');
+          const sublabel = node.getAttribute('data-node-sublabel');
+          const context = node.getAttribute('data-node-context');
+
+          inspTitle.textContent = label;
+          inspSub.textContent = sublabel;
+          inspDesc.textContent = context;
+          inspector.style.display = 'block';
+        });
+      });
+
+      inspClose.addEventListener('click', () => {
+        inspector.style.display = 'none';
+      });
+
+      // 4. Guided Scenario Step Player
+      const scenariosData = JSON.parse(document.getElementById('archify-guided-views-data').textContent);
+      let currentScenarioId = 'scenario-1';
+      let currentStepIndex = 0;
+
+      const selectScenario = document.getElementById('select-scenario');
+      const stepDesc = document.getElementById('step-description');
+      const btnPrev = document.getElementById('btn-step-prev');
+      const btnNext = document.getElementById('btn-step-next');
+
+      function getActiveScenario() {
+        return scenariosData.scenarios.find(s => s.id === currentScenarioId);
+      }
+
+      function renderStep() {
+        const scenario = getActiveScenario();
+        if (!scenario) return;
+
+        const step = scenario.steps[currentStepIndex];
+        stepDesc.textContent = step.desc;
+
+        // Reset highlights
+        document.querySelectorAll('.connection-line').forEach(l => l.classList.remove('highlighted'));
+        document.querySelectorAll('.archify-node').forEach(n => n.style.opacity = '0.4');
+
+        // Highlight step nodes & edges
+        step.nodes.forEach(nid => {
+          const n = document.getElementById(nid);
+          if (n) n.style.opacity = '1';
+        });
+
+        step.edges.forEach(eid => {
+          const eg = document.getElementById(eid);
+          if (eg) {
+            const line = eg.querySelector('.connection-line');
+            if (line) line.classList.add('highlighted');
+          }
+        });
+      }
+
+      function resetHighlights() {
+        document.querySelectorAll('.connection-line').forEach(l => l.classList.remove('highlighted'));
+        document.querySelectorAll('.archify-node').forEach(n => n.style.opacity = '1');
+        stepDesc.textContent = "Click 'Next' to play guided architectural scenario steps.";
+      }
+
+      selectScenario.addEventListener('change', (e) => {
+        currentScenarioId = e.target.value;
+        currentStepIndex = 0;
+        renderStep();
+      });
+
+      btnNext.addEventListener('click', () => {
+        const scenario = getActiveScenario();
+        if (currentStepIndex < scenario.steps.length - 1) {
+          currentStepIndex++;
+          renderStep();
+        }
+      });
+
+      btnPrev.addEventListener('click', () => {
+        if (currentStepIndex > 0) {
+          currentStepIndex--;
+          renderStep();
+        }
+      });
+
+      document.getElementById('btn-reset').addEventListener('click', () => {
+        resetHighlights();
+      });
+
+      // 5. SVG Export
+      document.getElementById('btn-export').addEventListener('click', () => {
+        const svgElement = document.getElementById('main-svg');
+        const svgData = new XMLSerializer().serializeToString(svgElement);
+        const svgBlob = new Blob([svgData], { type: 'image/svg+xml;charset=utf-8' });
+        const svgUrl = URL.createObjectURL(svgBlob);
+        const downloadLink = document.createElement('a');
+        downloadLink.href = svgUrl;
+        downloadLink.download = 'architecture_diagram.svg';
+        document.body.appendChild(downloadLink);
+        downloadLink.click();
+        document.body.removeChild(downloadLink);
+      });
+
+      // Initial Step Highlights
+      renderStep();
+    });
+  </script>
+</body>
+</html>
